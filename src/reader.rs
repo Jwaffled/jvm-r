@@ -29,7 +29,7 @@ pub struct ClassFile {
     attributes: Vec<AttributeInfo>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum ConstantPoolInfo {
     Utf8 {
         string: String,
@@ -179,6 +179,12 @@ struct BootstrapMethod {
 }
 
 #[derive(Debug)]
+struct LineNumberTable {
+    start_pc: u16,
+    line_number: u16,
+}
+
+#[derive(Debug)]
 enum Attribute {
     ConstantValue {
         constantvalue_index: u16,
@@ -202,9 +208,14 @@ enum Attribute {
     EnclosingMethod {},
     Synthetic {},
     Signature {},
-    SourceFile {},
+    SourceFile {
+        sourcefile_index: u16,
+    },
     SourceDebugExtension {},
-    LineNumberTable {},
+    LineNumberTable {
+        line_number_table_length: u16,
+        line_number_table: Vec<LineNumberTable>,
+    },
     LocalVariableTable {},
     LocalVariableTypeTable {},
     Deprecated {},
@@ -240,7 +251,7 @@ enum Attribute {
 #[derive(Debug)]
 pub struct ClassFileReader {
     buf: BufReader<File>,
-    constant_pool: Vec<ConstantPoolInfo>
+    constant_pool: Vec<ConstantPoolInfo>,
 }
 
 impl ClassFileReader {
@@ -257,18 +268,14 @@ impl ClassFileReader {
         let minor_version = self.buf.read_u16::<BigEndian>()?;
         let major_version = self.buf.read_u16::<BigEndian>()?;
         let constant_pool_count = self.buf.read_u16::<BigEndian>()?;
-        let mut constant_pool = Vec::new();
+        let mut constant_pool = vec![ConstantPoolInfo::String { string_index: 0 }]; // unhinged jvm spec bs
         for i in 0..constant_pool_count - 1 {
             let tag = self.buf.read_u8()?;
             constant_pool.push(self.constant_tag(tag)?);
         }
-        self.constant_pool = constant_pool;
-        let access_flags = ClassAccessFlags::from_bits(self.buf.read_u16::<BigEndian>()?).ok_or(
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "Expected class access flags, got invalid flag",
-            ),
-        )?;
+        self.constant_pool = constant_pool.to_vec();
+        let access_flags = ClassAccessFlags::from_bits(self.buf.read_u16::<BigEndian>()?)
+            .ok_or_else(|| self.report_error("Expected class access flags, got invalid flag"))?;
         let this_class = self.buf.read_u16::<BigEndian>()?;
         let super_class = self.buf.read_u16::<BigEndian>()?;
         let interfaces_count = self.buf.read_u16::<BigEndian>()?;
@@ -304,10 +311,9 @@ impl ClassFileReader {
         let mut methods = Vec::new();
         for i in 0..n {
             let access_flags = MethodAccessFlags::from_bits(self.buf.read_u16::<BigEndian>()?)
-                .ok_or(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Expected method access flags, got invalid flag",
-                ))?;
+                .ok_or_else(|| {
+                    self.report_error("Expected method access flags, got invalid flag")
+                })?;
             let name_index = self.buf.read_u16::<BigEndian>()?;
             let descriptor_index = self.buf.read_u16::<BigEndian>()?;
             let attributes_count = self.buf.read_u16::<BigEndian>()?;
@@ -323,20 +329,112 @@ impl ClassFileReader {
         Ok(methods)
     }
 
+    fn read_exception_table(&mut self, n: u16) -> io::Result<Vec<ExceptionTable>> {
+        let mut tables = Vec::new();
+        for _ in 0..n {
+            let start_pc = self.buf.read_u16::<BigEndian>()?;
+            let end_pc = self.buf.read_u16::<BigEndian>()?;
+            let handler_pc = self.buf.read_u16::<BigEndian>()?;
+            let catch_type = self.buf.read_u16::<BigEndian>()?;
+            tables.push(ExceptionTable {
+                start_pc,
+                end_pc,
+                handler_pc,
+                catch_type,
+            })
+        }
+
+        Ok(tables)
+    }
+
+    fn read_code_attrib(&mut self) -> io::Result<Attribute> {
+        let max_stack = self.buf.read_u16::<BigEndian>()?;
+        let max_locals = self.buf.read_u16::<BigEndian>()?;
+        let code_length = self.buf.read_u32::<BigEndian>()?;
+        let mut code = vec![0u8; code_length as usize];
+        self.buf.read_exact(&mut code)?;
+        let exception_table_length = self.buf.read_u16::<BigEndian>()?;
+        let exception_table = self.read_exception_table(exception_table_length)?;
+        let attributes_count = self.buf.read_u16::<BigEndian>()?;
+        let attributes = self.read_attributes(attributes_count)?;
+        Ok(Attribute::Code {
+            max_stack,
+            max_locals,
+            code_length,
+            code,
+            exception_table_length,
+            exception_table,
+            attributes_count,
+            attributes,
+        })
+    }
+
+    fn read_line_number_table_attrib(&mut self) -> io::Result<Attribute> {
+        let line_number_table_length = self.buf.read_u16::<BigEndian>()?;
+        let mut line_number_table = Vec::new();
+        for _ in 0..line_number_table_length {
+            let start_pc = self.buf.read_u16::<BigEndian>()?;
+            let line_number = self.buf.read_u16::<BigEndian>()?;
+            line_number_table.push(LineNumberTable {
+                start_pc,
+                line_number,
+            });
+        }
+        Ok(Attribute::LineNumberTable {
+            line_number_table_length,
+            line_number_table,
+        })
+    }
+
     fn read_attributes(&mut self, n: u16) -> io::Result<Vec<AttributeInfo>> {
-        let attribute_name_index = self.buf.read_u16::<BigEndian>()?;
-        let attribute_length = self.buf.read_u32::<BigEndian>()?;
-        
+        let mut res = Vec::new();
+        for i in 0..n {
+            let attribute_name_index = self.buf.read_u16::<BigEndian>()?;
+            let attribute_length = self.buf.read_u32::<BigEndian>()?;
+            let attrib = match self
+                .constant_pool
+                .get(attribute_name_index as usize)
+                .ok_or_else(|| {
+                    self.report_error(&format!(
+                        "Expected valid CONSTANT_POOL index, received '{}'",
+                        attribute_name_index
+                    ))
+                })? {
+                ConstantPoolInfo::Utf8 { string } => match string.as_str() {
+                    "Code" => self.read_code_attrib()?,
+                    "LineNumberTable" => self.read_line_number_table_attrib()?,
+                    "SourceFile" => {
+                        let sourcefile_index = self.buf.read_u16::<BigEndian>()?;
+                        Attribute::SourceFile { sourcefile_index }
+                    }
+                    other => {
+                        return Err(self
+                            .report_error(&format!("Attribute '{}' not implemented yet.", other)))
+                    }
+                },
+                other => {
+                    return Err(self.report_error(&format!(
+                        "Expected CONSTANT_Utf8_info in attribute name, received '{:?}'",
+                        other
+                    )))
+                }
+            };
+            res.push(AttributeInfo {
+                attribute_name_index,
+                attribute_length,
+                info: attrib,
+            })
+        }
+        Ok(res)
     }
 
     fn read_fields(&mut self, n: u16) -> io::Result<Vec<FieldInfo>> {
         let mut fields = Vec::new();
         for i in 0..n {
             let access_flags = FieldAccessFlags::from_bits(self.buf.read_u16::<BigEndian>()?)
-                .ok_or(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "Expected field access flags, got invalid flag",
-                ))?;
+                .ok_or_else(|| {
+                    self.report_error("Expected field access flags, got invalid flag")
+                })?;
             let name_index = self.buf.read_u16::<BigEndian>()?;
             let descriptor_index = self.buf.read_u16::<BigEndian>()?;
             let attributes_count = self.buf.read_u16::<BigEndian>()?;
@@ -358,10 +456,10 @@ impl ClassFileReader {
         for i in 0..n {
             let tag = self.buf.read_u8()?;
             if tag != ConstantPoolTag::Class.into() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Expected CONSTANT_Class_info tag, received tag '{}'", tag),
-                ));
+                return Err(self.report_error(&format!(
+                    "Expected CONSTANT_Class_info tag, received tag '{}'",
+                    tag
+                )));
             } else {
                 interfaces.push(self.constant_tag(tag)?);
             }
@@ -381,10 +479,7 @@ impl ClassFileReader {
                     self.buf.read_exact(&mut bytes)?;
                     match String::from_utf8(bytes) {
                         Ok(str) => Ok(CInfo::Utf8 { string: str }),
-                        Err(e) => Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            "UTF-8 String was not in correct format.",
-                        )),
+                        Err(e) => Err(self.report_error("UTF-8 String was not in correct format.")),
                     }
                 }
                 C::Integer => {
@@ -481,11 +576,17 @@ impl ClassFileReader {
                 }
             }
         } else {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("Invalid constant tag '{}' at ", tag),
-            ))
+            Err(self.report_error(&format!("Invalid constant tag '{}' at ", tag)))
         }
+    }
+
+    fn report_error(&self, message: &str) -> io::Error {
+        println!("[ERROR]: {}", message);
+        println!("BYTES: {:?}", self.buf.buffer());
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Bytecode file was not in the correct format!",
+        )
     }
 }
 
