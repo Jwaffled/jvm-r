@@ -30,7 +30,7 @@ pub struct ClassFile {
 }
 
 #[derive(Debug, Clone)]
-enum ConstantPoolInfo {
+pub enum ConstantPoolInfo {
     Utf8 {
         string: String,
     },
