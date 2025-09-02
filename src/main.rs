@@ -1,8 +1,8 @@
-use reader::ClassFileReader;
+use crate::vm::jvm::{JVMError, JVM};
 
 mod reader;
 mod vm;
-fn main() {
-    let mut reader = ClassFileReader::new("Main.class");
-    println!("Classfile: {:#?}", reader.read().unwrap());
+fn main() -> Result<(), JVMError> {
+    let mut jvm = JVM::new();
+    jvm.run_class("Main")
 }

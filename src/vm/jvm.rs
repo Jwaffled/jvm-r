@@ -1,268 +1,80 @@
-use std::collections::VecDeque;
+use std::{collections::HashMap, error::Error, rc::Rc};
 
-use num_enum::{IntoPrimitive, TryFromPrimitive};
+use crate::vm::{class::Class, class_loader::ClassLoader, jthread::JThread, jvalue::JValue, opcode::Opcode, stack_frame::StackFrame};
 
-use crate::reader::ConstantPoolInfo;
-
-struct JVM<'a> {
+pub struct JVM {
     class_loader: ClassLoader,
-    runtime: Runtime<'a>,
+    classes: HashMap<String, Rc<Class>>,
+    threads: Vec<JThread>
 }
 
-struct ClassLoader {}
-
-struct Runtime<'a> {
-    stack: VecDeque<StackFrame<'a>>,
-    opcodes: Vec<Opcode>,
-}
-
-impl<'a> Runtime<'a> {
+impl JVM {
     pub fn new() -> Self {
         Self {
-            stack: VecDeque::new(),
-            opcodes: Vec::new(),
+            class_loader: ClassLoader::new(),
+            classes: HashMap::new(),
+            threads: Vec::new(),
         }
+    }
+
+    pub fn run_class(&mut self, name: &str) -> Result<(), JVMError> {
+        let class = self.class_loader.load_class(name).unwrap();
+
+        println!("{:#?}", class);
+        
+        self.classes.insert(class.name.clone(), class.clone());
+
+        let main_method = class.methods.get("main:([Ljava/lang/String;)V")
+            .ok_or("Main method not found").unwrap()
+            .clone();
+
+        let frame = StackFrame {
+            class: class.clone(),
+            operand_stack: Vec::with_capacity(main_method.max_stack as usize),
+            locals: vec![JValue::Null; main_method.max_locals as usize],
+            method: main_method,
+            pc: 0
+        };
+
+        let mut thread = JThread { stack: vec![frame] };
+
+        while let Some(frame) = thread.stack.last_mut() {
+            if frame.pc >= frame.method.code.len() {
+                println!("Popping frame: {:#?}", frame);
+                thread.stack.pop();
+                continue;
+            }
+            let opcode = frame.method.code[frame.pc].clone();
+            self.execute_opcode(&mut thread, opcode)?;
+        }
+
+        Ok(())
+    }
+
+    fn execute_opcode(&mut self, thread: &mut JThread, opcode: Opcode) -> Result<(), JVMError> {
+        println!("EXECUTING {:?}", opcode);
+        
+        if let Some(frame) = thread.stack.last_mut() {
+            match opcode {
+                Opcode::Nop => {},
+                Opcode::AConstNull => self.aconst_null(frame)?,
+                _ => {}
+            }
+
+            frame.pc += 1;
+        }
+
+        Ok(())
+        
+    }
+
+    fn aconst_null(&mut self, frame: &mut StackFrame) -> Result<(), JVMError> {
+        frame.operand_stack.push(JValue::Null);
+        Ok(())
     }
 }
 
-struct Interpreter {}
+#[derive(Debug)]
+pub enum JVMError {
 
-type ConstantPool = Vec<ConstantPoolInfo>;
-
-struct StackFrame<'a> {
-    locals: Vec<JValue>,
-    operand_stack: VecDeque<JValue>,
-    constant_pool: &'a ConstantPool,
-}
-
-enum JValue {
-    Byte(i8),
-    Short(i16),
-    Int(i32),
-    Long(i64),
-    Char(u16),
-    Float(f32),
-    Double(f64),
-    Boolean(bool),
-    // impl more
-}
-
-#[derive(Debug, IntoPrimitive, TryFromPrimitive)]
-#[repr(u8)]
-enum Opcode {
-    // Constants
-    Nop,
-    AConstNull,
-    IConstM1,
-    IConst0,
-    IConst1,
-    IConst2,
-    IConst3,
-    IConst4,
-    IConst5,
-    LConst0,
-    LConst1,
-    FConst0,
-    FConst1,
-    FConst2,
-    DConst0,
-    DConst1,
-    BIPush,
-    SIPush,
-    Ldc,
-    LdcW,
-    Ldc2W,
-    // Loads
-    ILoad,
-    LLoad,
-    FLoad,
-    DLoad,
-    ALoad,
-    ILoad0,
-    ILoad1,
-    ILoad2,
-    ILoad3,
-    LLoad0,
-    LLoad1,
-    LLoad2,
-    LLoad3,
-    FLoad0,
-    FLoad1,
-    FLoad2,
-    FLoad3,
-    DLoad0,
-    DLoad1,
-    DLoad2,
-    DLoad3,
-    ALoad0,
-    ALoad1,
-    ALoad2,
-    ALoad3,
-    IALoad,
-    LALoad,
-    FALoad,
-    DALoad,
-    AALoad,
-    BALoad,
-    CALoad,
-    SALoad,
-    // Stores
-    IStore,
-    LStore,
-    FStore,
-    DStore,
-    AStore,
-    IStore0,
-    IStore1,
-    IStore2,
-    IStore3,
-    LStore0,
-    LStore1,
-    LStore2,
-    LStore3,
-    FStore0,
-    FStore1,
-    FStore2,
-    FStore3,
-    DStore0,
-    DStore1,
-    DStore2,
-    DStore3,
-    AStore0,
-    AStore1,
-    AStore2,
-    AStore3,
-    IAStore,
-    LAStore,
-    FAStore,
-    DAStore,
-    AAStore,
-    BAStore,
-    CAStore,
-    SAStore,
-    // Stack
-    Pop,
-    Pop2,
-    Dup,
-    DupX1,
-    DupX2,
-    Dup2,
-    Dup2X1,
-    Dup2X2,
-    Swap,
-    // Math
-    IAdd,
-    LAdd,
-    FAdd,
-    DAdd,
-    ISub,
-    LSub,
-    FSub,
-    DSub,
-    IMul,
-    LMul,
-    FMul,
-    DMul,
-    IDiv,
-    LDiv,
-    FDiv,
-    DDiv,
-    IRem,
-    LRem,
-    FRem,
-    DRem,
-    INeg,
-    LNeg,
-    FNeg,
-    DNeg,
-    IShl,
-    LShl,
-    IShr,
-    LShr,
-    IUShr,
-    LUshr,
-    IAnd,
-    LAnd,
-    IOr,
-    LOr,
-    IXor,
-    LXor,
-    IInc,
-    // Conversions
-    I2L,
-    I2F,
-    I2D,
-    L2I,
-    L2F,
-    L2D,
-    F2I,
-    F2L,
-    F2D,
-    D2I,
-    D2L,
-    D2F,
-    I2B,
-    I2C,
-    I2S,
-    LCmp,
-    FCmpL,
-    FCmpG,
-    DCmpL,
-    DCmpG,
-    IfEq,
-    IfNe,
-    IfLt,
-    IfGe,
-    IfGt,
-    IfLe,
-    IfICmpEq,
-    IfICmpNe,
-    IfICmpLt,
-    IfICmpGe,
-    IfICmpGt,
-    IfICmpLe,
-    IfACmpEq,
-    IfACmpNe,
-    // Control
-    Goto,
-    Jsr,
-    Ret,
-    TableSwitch,
-    LookupSwitch,
-    IReturn,
-    LReturn,
-    FReturn,
-    DReturn,
-    AReturn,
-    Return,
-    // References
-    GetStatic,
-    PutStatic,
-    GetField,
-    PutField,
-    InvokeVirtual,
-    InvokeSpecial,
-    InvokeStatic,
-    InvokeInterface,
-    InvokeDynamic,
-    New,
-    NewArray,
-    ANewArray,
-    ArrayLength,
-    AThrow,
-    CheckCast,
-    InstanceOf,
-    MonitorEnter,
-    MonitorExit,
-    // Extended
-    Wide,
-    MultiANewArray,
-    IfNull,
-    IfNonNull,
-    GotoW,
-    JsrW,
-    // Reserved
-    Breakpoint,
-    ImpDep1,
-    ImpDep2,
 }
