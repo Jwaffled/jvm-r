@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::{reader::{ClassAccessFlags, ClassFile, ConstantPoolInfo}, vm::{constant_pool::VMConstantPool, field::Field, method::Method}};
+use crate::{reader::{ClassAccessFlags, ClassFile, ConstantPoolInfo}, vm::{constant_pool::VMConstantPool, field::Field, method::Method, opcode::AType}};
 
 #[derive(Debug)]
 pub struct Class {
@@ -48,5 +48,38 @@ impl Class {
             constant_pool: cp,
             access_flags: cf.access_flags
         }            
+    }
+
+    pub fn primitive_array_class(ty: AType) -> Self {
+        let ty = match ty {
+            AType::Byte => "B",
+            AType::Char => "C",
+            AType::Double => "D",
+            AType::Float => "F",
+            AType::Int => "I",
+            AType::Long => "J",
+            AType::Short => "S",
+            AType::Boolean => "Z",
+        };
+
+        Self {
+            name: format!("[{}", ty),
+            super_name: Some(String::from("java/lang/Object")),
+            methods: HashMap::new(),
+            fields: HashMap::new(),
+            constant_pool: VMConstantPool::empty(),
+            access_flags: ClassAccessFlags::Public,
+        }
+    }
+
+    pub fn reference_array_class(class_name: &str) -> Self {
+        Self {
+            name: format!("[L{};", class_name),
+            super_name: Some(String::from("java/lang/Object")),
+            methods: HashMap::new(),
+            fields: HashMap::new(),
+            constant_pool: VMConstantPool::empty(),
+            access_flags: ClassAccessFlags::Public,
+        }
     }
 }

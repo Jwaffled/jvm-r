@@ -1,6 +1,6 @@
 use std::{collections::HashMap, error::Error, rc::Rc};
 
-use crate::{reader::{ClassFileReader, ConstantPoolInfo}, vm::class::Class};
+use crate::{reader::{ClassFileReader, ConstantPoolInfo}, vm::{class::Class, opcode::AType}};
 
 pub type ConstantPool = Vec<ConstantPoolInfo>;
 
@@ -10,8 +10,14 @@ pub struct ClassLoader {
 
 impl ClassLoader {
     pub fn new() -> Self {
+        let mut loaded_classes = HashMap::new();
+        for ty in [AType::Boolean, AType::Byte, AType::Char, AType::Double, AType::Float, AType::Int, AType::Long, AType::Short] {
+            let class = Class::primitive_array_class(ty);
+            loaded_classes.insert(class.name.clone(), Rc::new(class));
+        }
+
         Self {
-            loaded_classes: HashMap::new()
+            loaded_classes
         }
     }
 

@@ -1,6 +1,6 @@
-use std::{collections::HashMap, error::Error, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc};
 
-use crate::vm::{class::Class, class_loader::ClassLoader, jobject::JObject, jthread::JThread, jvalue::JValue, opcode::Opcode, stack_frame::StackFrame};
+use crate::vm::{class::Class, class_loader::ClassLoader, jobject::{JObject, JObjectKind}, jthread::JThread, jvalue::JValue, opcode::{AType, Opcode}, stack_frame::StackFrame};
 
 pub struct JVM {
     class_loader: ClassLoader,
@@ -112,6 +112,13 @@ impl JVM {
                 Opcode::ALoad3 => self.aload(frame, 3)?,
 
                 Opcode::IALoad => self.iaload(frame)?,
+                Opcode::LALoad => self.laload(frame)?,
+                Opcode::FALoad => self.faload(frame)?,
+                Opcode::DALoad => self.daload(frame)?,
+                Opcode::AALoad => self.aaload(frame)?,
+                Opcode::BALoad => self.baload(frame)?,
+                Opcode::CALoad => self.caload(frame)?,
+                Opcode::SALoad => self.saload(frame)?,
 
                 // Stores
                 Opcode::IStore(index) => self.istore(frame, index)?,
@@ -145,6 +152,15 @@ impl JVM {
                 Opcode::AStore2 => self.astore(frame, 2)?,
                 Opcode::AStore3 => self.astore(frame, 3)?,
 
+                Opcode::IAStore => self.iastore(frame)?,
+                Opcode::LAStore => self.lastore(frame)?,
+                Opcode::FAStore => self.fastore(frame)?,
+                Opcode::DAStore => self.dastore(frame)?,
+                Opcode::AAStore => self.aastore(frame)?,
+                Opcode::BAStore => self.bastore(frame)?,
+                Opcode::CAStore => self.castore(frame)?,
+                Opcode::SAStore => self.sastore(frame)?,
+
                 // Stack
                 Opcode::Dup => self.dup(frame)?,
 
@@ -166,6 +182,7 @@ impl JVM {
 
                 // References
                 Opcode::New(index) => self.new_op(frame, index)?,
+                Opcode::NewArray(ty) => self.newarray(frame, ty)?,
                 // Extended
 
                 // Reserved
@@ -188,8 +205,19 @@ impl JVM {
     fn new_op(&mut self, frame: &mut StackFrame, index: u16) -> JVMResult {
         let class_name = frame.class.constant_pool.get_class_name(index);
         let class = self.class_loader.load_class(&class_name).unwrap();
-        let object = Rc::new(JObject::new(class));
+        let object = Rc::new(RefCell::new(JObject::new(class)));
         frame.operand_stack.push(JValue::Reference(object));
+        Ok(())
+    }
+    
+    fn newarray(&mut self, frame: &mut StackFrame, ty: AType) -> JVMResult {
+        let count = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(count) => count,
+            other => panic!("newarray expected int, received {:?}", other)
+        };
+
+        let reference = JObject::new_primitive_array(ty, count);
+        frame.operand_stack.push(JValue::Reference(Rc::new(RefCell::new(reference))));
         Ok(())
     }
 
@@ -362,13 +390,209 @@ impl JVM {
         Ok(())
     }
 
-    fn iaload(&mut self, frame: &mut StackFrame) -> JVMResult {
-        let index = match frame.operand_stack.pop().unwrap() {
-            JValue::Int(i) => i,
-            other => panic!("iaload expected int, got {:?}", other)
+    fn iastore(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("iastore instruction expected int, received {:?}", other)
         };
 
-        let 
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("iastore instruction expected index of type int, received {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(obj) => {
+                let mut obj = obj.borrow_mut();
+                match &mut obj.kind {
+                    JObjectKind::ArrayInt(array) => array[index as usize] = value,
+                    other => panic!("iastore instruction expected int array, received {:?}", other)
+                }
+            }
+            other => panic!("iastore instruction expected reference, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn lastore(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Long(value) => value,
+            other => panic!("lastore instruction expected long, received {:?}", other)
+        };
+
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("lastore instruction expected index of type int, received {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(obj) => {
+                let mut obj = obj.borrow_mut();
+                match &mut obj.kind {
+                    JObjectKind::ArrayLong(array) => array[index as usize] = value,
+                    other => panic!("lastore instruction expected long array, received {:?}", other)
+                }
+            }
+            other => panic!("lastore instruction expected reference, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn fastore(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Float(value) => value,
+            other => panic!("fastore instruction expected float, received {:?}", other)
+        };
+
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("fastore instruction expected index of type int, received {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(obj) => {
+                let mut obj = obj.borrow_mut();
+                match &mut obj.kind {
+                    JObjectKind::ArrayFloat(array) => array[index as usize] = value,
+                    other => panic!("fastore instruction expected float array, received {:?}", other)
+                }
+            }
+            other => panic!("fastore instruction expected reference, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn dastore(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Double(value) => value,
+            other => panic!("dastore instruction expected double, received {:?}", other)
+        };
+
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("dastore instruction expected index of type int, received {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(obj) => {
+                let mut obj = obj.borrow_mut();
+                match &mut obj.kind {
+                    JObjectKind::ArrayDouble(array) => array[index as usize] = value,
+                    other => panic!("dastore instruction expected double array, received {:?}", other)
+                }
+            }
+            other => panic!("dastore instruction expected reference, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn aastore(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(value) => value,
+            other => panic!("aastore instruction expected reference, received {:?}", other)
+        };
+
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("aastore instruction expected index of type int, received {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(obj) => {
+                let mut obj = obj.borrow_mut();
+                match &mut obj.kind {
+                    JObjectKind::ArrayRef(array) => array[index as usize] = value,
+                    other => panic!("aastore instruction expected reference array, received {:?}", other)
+                }
+            }
+            other => panic!("aastore instruction expected reference, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn bastore(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("bastore instruction expected int, received {:?}", other)
+        };
+
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("bastore instruction expected index of type int, received {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(obj) => {
+                let mut obj = obj.borrow_mut();
+                match &mut obj.kind {
+                    JObjectKind::ArrayBoolean(array) => {
+                        array[index as usize] = value & 1 == 1;
+                    },
+                    JObjectKind::ArrayByte(array) => {
+                        array[index as usize] = value as i8;
+                    }
+                    other => panic!("bastore instruction expected byte or boolean array, received {:?}", other)
+                }
+            }
+            other => panic!("bastore instruction expected reference, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn castore(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("castore instruction expected int, received {:?}", other)
+        };
+
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("castore instruction expected index of type int, received {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(obj) => {
+                let mut obj = obj.borrow_mut();
+                match &mut obj.kind {
+                    JObjectKind::ArrayChar(array) => array[index as usize] = value as u16,
+                    other => panic!("castore instruction expected char array, received {:?}", other)
+                }
+            }
+            other => panic!("castore instruction expected reference, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn sastore(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("sastore instruction expected int, received {:?}", other)
+        };
+
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("sastore instruction expected index of type int, received {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(obj) => {
+                let mut obj = obj.borrow_mut();
+                match &mut obj.kind {
+                    JObjectKind::ArrayShort(array) => array[index as usize] = value as i16,
+                    other => panic!("sastore instruction expected short array, received {:?}", other)
+                }
+            }
+            other => panic!("sastore instruction expected reference, received {:?}", other)
+        }
+
+        Ok(())
     }
 
     /* End Stores */
@@ -422,6 +646,167 @@ impl JVM {
             JValue::Null => frame.operand_stack.push(JValue::Null),
             other => panic!("aload instruction expected reference, received {:?}", other)
         }
+
+        Ok(())
+    }
+
+    fn iaload(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(i) => i,
+            other => panic!("iaload expected int, got {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(object) => {
+                let object = object.borrow();
+                match &object.kind {
+                    JObjectKind::ArrayInt(array) => frame.operand_stack.push(JValue::Int(array[index as usize])),
+                    other => panic!("iaload expected int array, got {:?}", other)
+                }
+            }
+            other => panic!("iaload expected reference, got {:?}", other),
+        };
+
+        Ok(())
+    }
+
+    fn laload(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(i) => i,
+            other => panic!("laload expected int, got {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(object) => {
+                let object = object.borrow();
+                match &object.kind {
+                    JObjectKind::ArrayLong(array) => frame.operand_stack.push(JValue::Long(array[index as usize])),
+                    other => panic!("laload expected long array, got {:?}", other)
+                }
+            }
+            other => panic!("laload expected reference, got {:?}", other),
+        };
+
+        Ok(())
+    }
+
+    fn faload(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(i) => i,
+            other => panic!("faload expected int, got {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(object) => {
+                let object = object.borrow();
+                match &object.kind {
+                    JObjectKind::ArrayFloat(array) => frame.operand_stack.push(JValue::Float(array[index as usize])),
+                    other => panic!("faload expected float array, got {:?}", other)
+                }
+            }
+            other => panic!("faload expected reference, got {:?}", other),
+        };
+
+        Ok(())
+    }
+
+    fn daload(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(i) => i,
+            other => panic!("daload expected int, got {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(object) => {
+                let object = object.borrow();
+                match &object.kind {
+                    JObjectKind::ArrayDouble(array) => frame.operand_stack.push(JValue::Double(array[index as usize])),
+                    other => panic!("daload expected double array, got {:?}", other)
+                }
+            }
+            other => panic!("daload expected reference, got {:?}", other),
+        };
+
+        Ok(())
+    }
+
+    fn aaload(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(i) => i,
+            other => panic!("aaload expected int, got {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(object) => {
+                let object = object.borrow();
+                match &object.kind {
+                    JObjectKind::ArrayRef(array) => frame.operand_stack.push(JValue::Reference(array[index as usize].clone())),
+                    other => panic!("aaload expected object array, got {:?}", other)
+                }
+            }
+            other => panic!("aaload expected reference, got {:?}", other),
+        };
+
+        Ok(())
+    }
+
+    fn baload(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(i) => i,
+            other => panic!("baload expected int, got {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(object) => {
+                let object = object.borrow();
+                match &object.kind {
+                    JObjectKind::ArrayBoolean(array) => frame.operand_stack.push(JValue::Int(array[index as usize] as i32)),
+                    JObjectKind::ArrayByte(array) => frame.operand_stack.push(JValue::Int(array[index as usize] as i32)),
+                    other => panic!("baload expected boolean or byte array, got {:?}", other)
+                }
+            }
+            other => panic!("baload expected reference, got {:?}", other),
+        };
+
+        Ok(())
+    }
+
+    fn caload(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(i) => i,
+            other => panic!("caload expected int, got {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(object) => {
+                let object = object.borrow();
+                match &object.kind {
+                    JObjectKind::ArrayChar(array) => frame.operand_stack.push(JValue::Int(array[index as usize] as i32)),
+                    other => panic!("caload expected char array, got {:?}", other)
+                }
+            }
+            other => panic!("caload expected reference, got {:?}", other),
+        };
+
+        Ok(())
+    }
+
+    fn saload(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(i) => i,
+            other => panic!("saload expected int, got {:?}", other)
+        };
+
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(object) => {
+                let object = object.borrow();
+                match &object.kind {
+                    JObjectKind::ArrayShort(array) => frame.operand_stack.push(JValue::Int(array[index as usize] as i32)),
+                    other => panic!("saload expected short array, got {:?}", other)
+                }
+            }
+            other => panic!("saload expected reference, got {:?}", other),
+        };
 
         Ok(())
     }

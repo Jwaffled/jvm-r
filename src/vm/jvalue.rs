@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use crate::vm::jobject::JObject;
 
@@ -12,6 +12,6 @@ pub enum JValue {
     Float(f32),
     Double(f64),
     Boolean(bool),
-    Reference(Rc<JObject>),
+    Reference(Rc<RefCell<JObject>>),
     Null
 }
