@@ -241,7 +241,11 @@ impl JVM {
                 Opcode::I2S => self.i2s(frame)?,
 
                 // Comparisons
-
+                Opcode::LCmp => self.lcmp(frame)?,
+                Opcode::FCmpL => self.fcmpl(frame)?,
+                Opcode::FCmpG => self.fcmpg(frame)?,
+                Opcode::DCmpL => self.dcmpl(frame)?,
+                Opcode::DCmpG => self.dcmpg(frame)?,
                 // Control
 
                 // References
@@ -292,6 +296,106 @@ impl JVM {
     /* End Control */
 
     /* Comparisons */
+
+    fn lcmp(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Long(value2)) => frame.operand_stack.push(JValue::Int(value1.cmp(&value2) as i32)),
+            (other1, other2) => panic!("lcmp expected both values to be long, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn fcmpl(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Float(value1), JValue::Float(value2)) => {
+                let result = if value1.is_nan() || value2.is_nan() {
+                    -1
+                } else {
+                    value1.partial_cmp(&value2).unwrap() as i32
+                };
+
+                frame.operand_stack.push(JValue::Int(result));
+            }
+            (other1, other2) => panic!("fcmpl expected both values to be float, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn fcmpg(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Float(value1), JValue::Float(value2)) => {
+                let result = if value1.is_nan() || value2.is_nan() {
+                    1
+                } else {
+                    value1.partial_cmp(&value2).unwrap() as i32
+                };
+
+                frame.operand_stack.push(JValue::Int(result));
+            }
+            (other1, other2) => panic!("fcmpg expected both values to be float, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn dcmpl(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Double(value1), JValue::Double(value2)) => {
+                let result = if value1.is_nan() || value2.is_nan() {
+                    -1
+                } else {
+                    value1.partial_cmp(&value2).unwrap() as i32
+                };
+
+                frame.operand_stack.push(JValue::Int(result));
+            }
+            (other1, other2) => panic!("dcmpl expected both values to be double, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn dcmpg(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Double(value1), JValue::Double(value2)) => {
+                let result = if value1.is_nan() || value2.is_nan() {
+                    1
+                } else {
+                    value1.partial_cmp(&value2).unwrap() as i32
+                };
+
+                frame.operand_stack.push(JValue::Int(result));
+            }
+            (other1, other2) => panic!("dcmpg expected both values to be double, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn ifeq(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => {
+                if value == 0 {
+                    frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            }
+            other => panic!("ifeq expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
 
     /* End Comparisons */
 
