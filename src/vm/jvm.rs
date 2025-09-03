@@ -177,12 +177,68 @@ impl JVM {
                 Opcode::LAdd => self.ladd(frame)?,
                 Opcode::FAdd => self.fadd(frame)?,
                 Opcode::DAdd => self.dadd(frame)?,
+
                 Opcode::ISub => self.isub(frame)?,
                 Opcode::LSub => self.lsub(frame)?,
                 Opcode::FSub => self.fsub(frame)?,
                 Opcode::DSub => self.dsub(frame)?,
 
+                Opcode::IMul => self.imul(frame)?,
+                Opcode::LMul => self.lmul(frame)?,
+                Opcode::FMul => self.fmul(frame)?,
+                Opcode::DMul => self.dmul(frame)?,
+
+                Opcode::IDiv => self.idiv(frame)?,
+                Opcode::LDiv => self.ldiv(frame)?,
+                Opcode::FDiv => self.fdiv(frame)?,
+                Opcode::DDiv => self.ddiv(frame)?,
+
+                Opcode::IRem => self.irem(frame)?,
+                Opcode::LRem => self.lrem(frame)?,
+                Opcode::FRem => self.frem(frame)?,
+                Opcode::DRem => self.drem(frame)?,
+
+                Opcode::INeg => self.ineg(frame)?,
+                Opcode::LNeg => self.lneg(frame)?,
+                Opcode::FNeg => self.fneg(frame)?,
+                Opcode::DNeg => self.dneg(frame)?,
+
+                Opcode::IShl => self.ishl(frame)?,
+                Opcode::LShl => self.lshl(frame)?,
+                Opcode::IShr => self.ishr(frame)?,
+                Opcode::LShr => self.lshr(frame)?,
+                Opcode::IUShr => self.iushr(frame)?,
+                Opcode::LUshr => self.lushr(frame)?,
+
+                Opcode::IAnd => self.iand(frame)?,
+                Opcode::LAnd => self.land(frame)?,
+                Opcode::IOr => self.ior(frame)?,
+                Opcode::LOr => self.lor(frame)?,
+                Opcode::IXor => self.ixor(frame)?,
+                Opcode::LXor => self.lxor(frame)?,
+
+                Opcode::IInc(index, constant) => self.iinc(frame, index, constant)?,
+
                 // Conversions
+                Opcode::I2L => self.i2l(frame)?,
+                Opcode::I2F => self.i2f(frame)?,
+                Opcode::I2D => self.i2d(frame)?,
+
+                Opcode::L2I => self.l2i(frame)?,
+                Opcode::L2F => self.l2f(frame)?,
+                Opcode::L2D => self.l2d(frame)?,
+
+                Opcode::F2I => self.f2i(frame)?,
+                Opcode::F2L => self.f2l(frame)?,
+                Opcode::F2D => self.f2d(frame)?,
+
+                Opcode::D2I => self.d2i(frame)?,
+                Opcode::D2L => self.d2l(frame)?,
+                Opcode::D2F => self.d2f(frame)?,
+
+                Opcode::I2B => self.i2b(frame)?,
+                Opcode::I2C => self.i2c(frame)?,
+                Opcode::I2S => self.i2s(frame)?,
 
                 // Comparisons
 
@@ -240,6 +296,142 @@ impl JVM {
     /* End Comparisons */
 
     /* Conversions */
+
+    fn i2l(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => frame.operand_stack.push(JValue::Long(value as i64)),
+            other => panic!("i2l expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn i2f(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => frame.operand_stack.push(JValue::Float(value as f32)),
+            other => panic!("i2f expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn i2d(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => frame.operand_stack.push(JValue::Double(value as f64)),
+            other => panic!("i2d expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn l2i(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Long(value) => frame.operand_stack.push(JValue::Int(value as i32)),
+            other => panic!("l2i expected long, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn l2f(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Long(value) => frame.operand_stack.push(JValue::Float(value as f32)),
+            other => panic!("l2f expected long, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn l2d(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Long(value) => frame.operand_stack.push(JValue::Double(value as f64)),
+            other => panic!("l2d expected long, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn f2i(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Float(value) => frame.operand_stack.push(JValue::Int(value as i32)),
+            other => panic!("f2i expected float, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn f2l(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Float(value) => frame.operand_stack.push(JValue::Long(value as i64)),
+            other => panic!("f2l expected float, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn f2d(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Float(value) => frame.operand_stack.push(JValue::Double(value as f64)),
+            other => panic!("f2i expected float, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn d2i(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Double(value) => frame.operand_stack.push(JValue::Int(value as i32)),
+            other => panic!("d2i expected double, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn d2l(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Double(value) => frame.operand_stack.push(JValue::Long(value as i64)),
+            other => panic!("d2l expected double, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn d2f(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Double(value) => frame.operand_stack.push(JValue::Float(value as f32)),
+            other => panic!("d2f expected double, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn i2b(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => frame.operand_stack.push(JValue::Byte(value as i8)),
+            other => panic!("i2b expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn i2c(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => frame.operand_stack.push(JValue::Char(value as u16)),
+            other => panic!("i2c expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn i2s(&mut self, frame: &mut StackFrame) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => frame.operand_stack.push(JValue::Short(value as i16)),
+            other => panic!("i2s expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+    
 
     /* End Conversions */
 
@@ -328,6 +520,345 @@ impl JVM {
         match (value1, value2) {
             (JValue::Double(value1), JValue::Double(value2)) => frame.operand_stack.push(JValue::Double(value1 - value2)),
             (other1, other2) => panic!("dsub expected both values to be double, received {:?} - {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn imul(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => frame.operand_stack.push(JValue::Int(value1 * value2)),
+            (other1, other2) => panic!("imul expected both values to be int, received {:?} * {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn lmul(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Long(value2)) => frame.operand_stack.push(JValue::Long(value1 * value2)),
+            (other1, other2) => panic!("lmul expected both values to be long, received {:?} * {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn fmul(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Float(value1), JValue::Float(value2)) => frame.operand_stack.push(JValue::Float(value1 * value2)),
+            (other1, other2) => panic!("fmul expected both values to be float, received {:?} * {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn dmul(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Double(value1), JValue::Double(value2)) => frame.operand_stack.push(JValue::Double(value1 * value2)),
+            (other1, other2) => panic!("dmul expected both values to be double, received {:?} * {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn idiv(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => frame.operand_stack.push(JValue::Int(value1 / value2)),
+            (other1, other2) => panic!("idiv expected both values to be int, received {:?} / {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn ldiv(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Long(value2)) => frame.operand_stack.push(JValue::Long(value1 / value2)),
+            (other1, other2) => panic!("ldiv expected both values to be long, received {:?} / {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn fdiv(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Float(value1), JValue::Float(value2)) => frame.operand_stack.push(JValue::Float(value1 / value2)),
+            (other1, other2) => panic!("fdiv expected both values to be float, received {:?} / {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn ddiv(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Double(value1), JValue::Double(value2)) => frame.operand_stack.push(JValue::Double(value1 / value2)),
+            (other1, other2) => panic!("ddiv expected both values to be double, received {:?} / {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn irem(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => frame.operand_stack.push(JValue::Int(value1 % value2)),
+            (other1, other2) => panic!("irem expected both values to be int, received {:?} % {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn lrem(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Long(value2)) => frame.operand_stack.push(JValue::Long(value1 % value2)),
+            (other1, other2) => panic!("lrem expected both values to be long, received {:?} % {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn frem(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Float(value1), JValue::Float(value2)) => frame.operand_stack.push(JValue::Float(value1 % value2)),
+            (other1, other2) => panic!("frem expected both values to be float, received {:?} % {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn drem(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Double(value1), JValue::Double(value2)) => frame.operand_stack.push(JValue::Double(value1 % value2)),
+            (other1, other2) => panic!("drem expected both values to be int, received {:?} % {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn ineg(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = frame.operand_stack.pop().unwrap();
+        match value {
+            JValue::Int(value) => frame.operand_stack.push(JValue::Int(-value)),
+            other => panic!("ineg expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn lneg(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = frame.operand_stack.pop().unwrap();
+        match value {
+            JValue::Long(value) => frame.operand_stack.push(JValue::Long(-value)),
+            other => panic!("lneg expected long, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn fneg(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = frame.operand_stack.pop().unwrap();
+        match value {
+            JValue::Float(value) => frame.operand_stack.push(JValue::Float(-value)),
+            other => panic!("fneg expected float, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn dneg(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value = frame.operand_stack.pop().unwrap();
+        match value {
+            JValue::Double(value) => frame.operand_stack.push(JValue::Double(-value)),
+            other => panic!("dneg expected double, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn ishl(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => {
+                let result = value1 << (value2 & 0b11111);
+                frame.operand_stack.push(JValue::Int(result));
+            }
+            (other1, other2) => panic!("ishl expected both values to be int, received {:?} << {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn lshl(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Int(value2)) => {
+                let result = value1 << (value2 & 0b111111);
+                frame.operand_stack.push(JValue::Long(result));
+            }
+            (other1, other2) => panic!("lshl expected value1 to be long, value2 to be int, received {:?} << {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn ishr(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => {
+                let result = value1 >> (value2 & 0b11111);
+                frame.operand_stack.push(JValue::Int(result));
+            }
+            (other1, other2) => panic!("ishr expected both values to be int, received {:?} >> {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn lshr(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Int(value2)) => {
+                let result = value1 >> (value2 & 0b111111);
+                frame.operand_stack.push(JValue::Long(result));
+            }
+            (other1, other2) => panic!("rshr expected value1 to be long, value2 to be int, received {:?} >> {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn iushr(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => {
+                let shift = (value2 & 0b11111) as u32;
+                let result = (value1 as u32) >> shift;
+                frame.operand_stack.push(JValue::Int(result as i32));
+            }
+            (other1, other2) => panic!("iushr expected both values to be int, received {:?} >> {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn lushr(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Int(value2)) => {
+                let shift = (value2 & 0b111111) as u32;
+                let result = (value1 as u32) >> shift;
+                frame.operand_stack.push(JValue::Int(result as i32));
+            }
+            (other1, other2) => panic!("lushr expected value1 to be long, value2 to be int, received {:?} >> {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn iand(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => frame.operand_stack.push(JValue::Int(value1 & value2)),
+            (other1, other2) => panic!("iand expected both values to be int, received {:?} & {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn land(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Long(value2)) => frame.operand_stack.push(JValue::Long(value1 & value2)),
+            (other1, other2) => panic!("land expected both values to be long, received {:?} & {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn ior(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => frame.operand_stack.push(JValue::Int(value1 | value2)),
+            (other1, other2) => panic!("ior expected both values to be int, received {:?} | {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn lor(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Long(value2)) => frame.operand_stack.push(JValue::Long(value1 | value2)),
+            (other1, other2) => panic!("lor expected both values to be long, received {:?} | {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn ixor(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => frame.operand_stack.push(JValue::Int(value1 ^ value2)),
+            (other1, other2) => panic!("ixor expected both values to be int, received {:?} ^ {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn lxor(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+
+        match (value1, value2) {
+            (JValue::Long(value1), JValue::Long(value2)) => frame.operand_stack.push(JValue::Long(value1 ^ value2)),
+            (other1, other2) => panic!("lxor expected both values to be long, received {:?} ^ {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn iinc(&mut self, frame: &mut StackFrame, index: u8, constant: i8) -> JVMResult {
+        match &mut frame.locals[index as usize] {
+            JValue::Int(value) => *value += constant as i32,
+            other => panic!("iinc expected int local, found {:?}", other)
         }
 
         Ok(())
