@@ -1,3 +1,5 @@
+use num_enum::TryFromPrimitive;
+
 #[derive(Debug, Clone)]
 #[repr(u8)]
 pub enum Opcode {
@@ -217,17 +219,17 @@ pub enum Opcode {
     // Extended
     Wide(WideInstruction),
     MultiANewArray(u16, u8),
-    IfNull(u16),
-    IfNonNull(u16),
-    GotoW(u32),
-    JsrW(u32),
+    IfNull(i16),
+    IfNonNull(i16),
+    GotoW(i32),
+    JsrW(i32),
     // Reserved
     Breakpoint,
     ImpDep1,
     ImpDep2,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, TryFromPrimitive)]
 #[repr(u8)]
 pub enum AType {
     Boolean = 4,

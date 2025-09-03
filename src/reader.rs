@@ -9,7 +9,7 @@ use bitflags::bitflags;
 use byteorder::{BigEndian, ReadBytesExt};
 use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
 
-use crate::vm::opcode::{Opcode, WideInstruction};
+use crate::vm::opcode::{AType, Opcode, WideInstruction};
 
 #[derive(Default, Debug)]
 pub struct ClassFile {
@@ -606,6 +606,7 @@ impl ClassFileReader {
 
     pub fn parse_opcode<R: Read>(code: u8, reader: &mut R, bytes_read: &mut u32) -> io::Result<Opcode> {
         let op = match code {
+            /* Constants */
             0x00 => Opcode::Nop,
             0x01 => Opcode::AConstNull,
             0x02 => Opcode::IConstM1,
@@ -622,7 +623,6 @@ impl ClassFileReader {
             0x0D => Opcode::FConst2,
             0x0E => Opcode::DConst0,
             0x0F => Opcode::DConst1,
-
             0x10 => {
                 let idx = reader.read_i8()?;
                 *bytes_read += 1;
@@ -638,44 +638,43 @@ impl ClassFileReader {
                 *bytes_read += 1;
                 Opcode::Ldc(idx) 
             }
-            0x13 => { /* LDC_W: read 2 byte index */
+            0x13 => {
                 let idx = reader.read_u16::<BigEndian>()?;
                 *bytes_read += 2;
                 Opcode::LdcW(idx)
             }
-            0x14 => { /* LDC2_W: read 2 byte index */ 
+            0x14 => {
                 let idx = reader.read_u16::<BigEndian>()?;
                 *bytes_read += 2;
                 Opcode::Ldc2W(idx)
             }
 
             // Loads
-            0x15 => { /* ILOAD: read 1 byte index */ 
+            0x15 => {
                 let idx = reader.read_u8()?;
                 *bytes_read += 1;
                 Opcode::ILoad(idx)
             }
-            0x16 => { /* LLOAD */ 
+            0x16 => {
                 let idx = reader.read_u8()?;
                 *bytes_read += 1;
                 Opcode::LLoad(idx)
             }
-            0x17 => { /* FLOAD */ 
+            0x17 => {
                 let idx = reader.read_u8()?;
                 *bytes_read += 1;
                 Opcode::FLoad(idx)
             }
-            0x18 => { /* DLOAD */ 
+            0x18 => {
                 let idx = reader.read_u8()?;
                 *bytes_read += 1;
                 Opcode::DLoad(idx)
             }
-            0x19 => { /* ALOAD */ 
+            0x19 => {
                 let idx = reader.read_u8()?;
                 *bytes_read += 1;
                 Opcode::ALoad(idx)
             }
-
             0x1A => Opcode::ILoad0,
             0x1B => Opcode::ILoad1,
             0x1C => Opcode::ILoad2,
@@ -696,8 +695,16 @@ impl ClassFileReader {
             0x2B => Opcode::ALoad1,
             0x2C => Opcode::ALoad2,
             0x2D => Opcode::ALoad3,
+            0x2E => Opcode::IALoad,
+            0x2F => Opcode::LALoad,
+            0x30 => Opcode::FALoad,
+            0x31 => Opcode::DALoad,
+            0x32 => Opcode::AALoad,
+            0x33 => Opcode::BALoad,
+            0x34 => Opcode::CALoad,
+            0x35 => Opcode::SALoad,
 
-            // Stores
+            /* Stores */
             0x36 => { /* ISTORE */ 
                 let idx = reader.read_u8()?;
                 *bytes_read += 1;
@@ -744,15 +751,16 @@ impl ClassFileReader {
             0x4C => Opcode::AStore1,
             0x4D => Opcode::AStore2,
             0x4E => Opcode::AStore3,
+            0x4F => Opcode::IAStore,
+            0x50 => Opcode::LAStore,
+            0x51 => Opcode::FAStore,
+            0x52 => Opcode::DAStore,
+            0x53 => Opcode::AAStore,
+            0x54 => Opcode::BAStore,
+            0x55 => Opcode::CAStore,
+            0x56 => Opcode::SAStore,
 
-            0x84 => { /* IINC */ 
-                let idx = reader.read_u8()?;
-                let constant = reader.read_i8()?;
-                *bytes_read += 2;
-                Opcode::IInc(idx, constant)
-            }
-
-            // Stack
+            /* Stack */
             0x57 => Opcode::Pop,
             0x58 => Opcode::Pop2,
             0x59 => Opcode::Dup,
@@ -763,7 +771,7 @@ impl ClassFileReader {
             0x5E => Opcode::Dup2X2,
             0x5F => Opcode::Swap,
 
-            // Math
+            /* Math */
             0x60 => Opcode::IAdd,
             0x61 => Opcode::LAdd,
             0x62 => Opcode::FAdd,
@@ -788,24 +796,136 @@ impl ClassFileReader {
             0x75 => Opcode::LNeg,
             0x76 => Opcode::FNeg,
             0x77 => Opcode::DNeg,
+            0x78 => Opcode::IShl,
+            0x79 => Opcode::LShl,
+            0x7A => Opcode::IShr,
+            0x7B => Opcode::LShr,
+            0x7C => Opcode::IUShr,
+            0x7D => Opcode::LUshr,
+            0x7E => Opcode::IAnd,
+            0x7F => Opcode::LAnd,
+            0x80 => Opcode::IOr,
+            0x81 => Opcode::LOr,
+            0x82 => Opcode::IXor,
+            0x83 => Opcode::LXor,
+            0x84 => {
+                let idx = reader.read_u8()?;
+                let constant = reader.read_i8()?;
+                *bytes_read += 2;
+                Opcode::IInc(idx, constant)
+            }
 
-            // Control
-            0xA7 => { /* GOTO */ 
+            /* Conversions */
+            0x85 => Opcode::I2L,
+            0x86 => Opcode::I2F,
+            0x87 => Opcode::I2D,
+            0x88 => Opcode::L2I,
+            0x89 => Opcode::L2F,
+            0x8A => Opcode::L2D,
+            0x8B => Opcode::F2I,
+            0x8C => Opcode::F2L,
+            0x8D => Opcode::F2D,
+            0x8E => Opcode::D2I,
+            0x8F => Opcode::D2L,
+            0x90 => Opcode::D2F,
+            0x91 => Opcode::I2B,
+            0x92 => Opcode::I2C,
+            0x93 => Opcode::I2S,
+
+            /* Comparisons */
+            0x94 => Opcode::LCmp,
+            0x95 => Opcode::FCmpL,
+            0x96 => Opcode::FCmpG,
+            0x97 => Opcode::DCmpL,
+            0x98 => Opcode::DCmpG,
+            0x99 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfEq(offset)
+            }
+            0x9A => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfNe(offset)
+            }
+            0x9B => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfLt(offset)
+            }
+            0x9C => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfGe(offset)
+            }
+            0x9D => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfGt(offset)
+            }
+            0x9E => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfLe(offset)
+            }
+            0x9F => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfICmpEq(offset)
+            }
+            0xA0 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfICmpNe(offset)
+            }
+            0xA1 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfICmpLt(offset)
+            }
+            0xA2 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfICmpGe(offset)
+            }
+            0xA3 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfICmpGt(offset)
+            }
+            0xA4 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfICmpLe(offset)
+            }
+            0xA5 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfACmpEq(offset)
+            }
+            0xA6 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfACmpNe(offset)
+            }
+
+            /* Control */
+            0xA7 => {
                 let offset = reader.read_i16::<BigEndian>()?;
                 *bytes_read += 2;
                 Opcode::Goto(offset)
             }
-            0xA8 => { /* JSR */ 
+            0xA8 => {
                 let offset = reader.read_i16::<BigEndian>()?;
                 *bytes_read += 2;
                 Opcode::Jsr(offset)
             }
-            0xA9 => { /* RET */ 
+            0xA9 => {
                 let idx = reader.read_u8()?;
                 *bytes_read += 1;
                 Opcode::Ret(idx)
             }
-            0xAA => { /* TABLESWITCH */ 
+            0xAA => {
                 let padding = (4 - (*bytes_read % 4)) % 4;
                 for _ in 0..padding {
                     reader.read_u8()?;
@@ -826,7 +946,7 @@ impl ClassFileReader {
 
                 Opcode::TableSwitch { default_offset: default, low, high, jump_offsets: offsets }
             }
-            0xAB => { /* LOOKUPSWITCH */ 
+            0xAB => {
                 let padding = (4 - (*bytes_read % 4)) % 4;
                 for _ in 0..padding {
                     reader.read_u8()?;
@@ -847,24 +967,50 @@ impl ClassFileReader {
 
                 Opcode::LookupSwitch { default_offset: default, npairs: npairs, match_offsets: pairs }
             }
-
-            // Invoke
-            0xB6 => { /* INVOKEVIRTUAL */ 
+            0xAC => Opcode::IReturn,
+            0xAD => Opcode::LReturn,
+            0xAE => Opcode::FReturn,
+            0xAF => Opcode::DReturn,
+            0xB0 => Opcode::AReturn,
+            0xB1 => Opcode::Return,
+            
+            /* References */
+            0xB2 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::GetStatic(index)
+            }
+            0xB3 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::PutStatic(index)
+            }
+            0xB4 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::GetField(index)
+            }
+            0xB5 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::PutField(index)
+            }
+            0xB6 => {
                 let idx = reader.read_u16::<BigEndian>()?;
                 *bytes_read += 2;
                 Opcode::InvokeVirtual(idx)
             }
-            0xB7 => { /* INVOKESPECIAL */ 
+            0xB7 => {
                 let idx = reader.read_u16::<BigEndian>()?;
                 *bytes_read += 2;
                 Opcode::InvokeSpecial(idx)
             }
-            0xB8 => { /* INVOKESTATIC */
+            0xB8 => {
                 let idx = reader.read_u16::<BigEndian>()?;
                 *bytes_read += 2;
                 Opcode::InvokeStatic(idx)
             }
-            0xB9 => { /* INVOKEINTERFACE */ 
+            0xB9 => {
                 let idx = reader.read_u16::<BigEndian>()?;
                 let count = reader.read_u8()?;
                 if reader.read_u8()? == 0 {
@@ -873,82 +1019,104 @@ impl ClassFileReader {
                 *bytes_read += 4;
                 Opcode::InvokeInterface(idx, count)
             }
-            0xBA => { /* INVOKEDYNAMIC */ 
+            0xBA => {
                 let idx = reader.read_u16::<BigEndian>()?;
                 *bytes_read += 2;
                 Opcode::InvokeDynamic(idx)
             }
+            0xBB => {
+                let index = reader.read_u16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::New(index)
+            }
+            0xBC => {
+                let atype = reader.read_u8()?;
+                let atype = AType::try_from_primitive(atype).expect("AType after newarray instruction was invalid.");
+                *bytes_read += 1;
+                Opcode::NewArray(atype)
+            }
+            0xBD => {
+                let index = reader.read_u16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::ANewArray(index)
+            }
+            0xBE => Opcode::ArrayLength,
+            0xBF => Opcode::AThrow,
+            0xC0 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::CheckCast(index)
+            }
+            0xC1 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::InstanceOf(index)
+            }
+            0xC2 => Opcode::MonitorEnter,
+            0xC3 => Opcode::MonitorExit,
 
-            // Return
-            0xAC => Opcode::IReturn,
-            0xAD => Opcode::LReturn,
-            0xAE => Opcode::FReturn,
-            0xAF => Opcode::DReturn,
-            0xB0 => Opcode::AReturn,
-            0xB1 => Opcode::Return,
-
-            // Misc
-            0xC4 => { /* WIDE */ 
+            /* Extended */
+            0xC4 => {
                 let wide_opcode = reader.read_u8()?;
                 *bytes_read += 1;
 
                 let instr = match wide_opcode {
-                    // Load instructions
-                    0x15 => { // ILOAD
+                    // Loads
+                    0x15 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::ILoad(index)
                     }
-                    0x16 => { // LLOAD
+                    0x16 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::LLoad(index)
                     }
-                    0x17 => { // FLOAD
+                    0x17 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::FLoad(index)
                     }
-                    0x18 => { // DLOAD
+                    0x18 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::DLoad(index)
                     }
-                    0x19 => { // ALOAD
+                    0x19 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::ALoad(index)
                     }
 
-                    // Store instructions
-                    0x36 => { // ISTORE
+                    // Stores
+                    0x36 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::IStore(index)
                     }
-                    0x37 => { // LSTORE
+                    0x37 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::LStore(index)
                     }
-                    0x38 => { // FSTORE
+                    0x38 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::FStore(index)
                     }
-                    0x39 => { // DSTORE
+                    0x39 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::DStore(index)
                     }
-                    0x3A => { // ASTORE
+                    0x3A => {
                         let index = reader.read_u16::<BigEndian>()?;
                         *bytes_read += 2;
                         WideInstruction::AStore(index)
                     }
 
                     // Increment
-                    0x84 => { // IINC
+                    0x84 => {
                         let index = reader.read_u16::<BigEndian>()?;
                         let constant = reader.read_i16::<BigEndian>()?;
                         *bytes_read += 4;
@@ -960,9 +1128,35 @@ impl ClassFileReader {
 
                 Opcode::Wide(instr)
             }
+            0xC5 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                let dimensions = reader.read_u8()?;
+                *bytes_read += 3;
+                Opcode::MultiANewArray(index, dimensions)
+            }
+            0xC6 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfNull(offset)
+            }
+            0xC7 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                *bytes_read += 2;
+                Opcode::IfNonNull(offset)
+            }
+            0xC8 => {
+                let offset = reader.read_i32::<BigEndian>()?;
+                *bytes_read += 4;
+                Opcode::GotoW(offset)
+            }
+            0xC9 => {
+                let offset = reader.read_i32::<BigEndian>()?;
+                *bytes_read += 4;
+                Opcode::JsrW(offset)
+            }
             0xCA => Opcode::Breakpoint,
 
-            _ => panic!("Unknown opcode {:X}", code),
+            0xCB..=0xFF => panic!("Unknown opcode {:X}", code),
         };
 
         Ok(op)

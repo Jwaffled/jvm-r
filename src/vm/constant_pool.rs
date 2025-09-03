@@ -1,4 +1,6 @@
-use crate::{reader::ConstantPoolInfo, vm::{class_loader::ConstantPool, jvalue::JValue}};
+use std::rc::Rc;
+
+use crate::{reader::ConstantPoolInfo, vm::{class_loader::ConstantPool, jobject::JObject, jvalue::JValue}};
 
 #[derive(Debug)]
 pub struct VMConstantPool {
@@ -6,6 +8,12 @@ pub struct VMConstantPool {
 }
 
 impl VMConstantPool {
+    pub fn empty() -> Self {
+        Self {
+            cp: Vec::new()
+        }
+    }
+    
     pub fn new(cp: ConstantPool) -> Self {
         Self {
             cp
@@ -35,6 +43,28 @@ impl VMConstantPool {
             ConstantPoolInfo::Long { bytes } => JValue::Long(*bytes),
             ConstantPoolInfo::Double { bytes } => JValue::Double(*bytes),
             other => panic!("Expected Constant Value, received {:?}", other)
+        }
+    }
+
+    pub fn resolve_ldc_constant(&self, index: u16) -> JValue {
+        match &self.cp[index as usize] {
+            ConstantPoolInfo::Integer { bytes } => JValue::Int(*bytes),
+            ConstantPoolInfo::Float { bytes} => JValue::Float(*bytes),
+            ConstantPoolInfo::String { string_index } => {
+                if let ConstantPoolInfo::Utf8 { string } = &self.cp[*string_index as usize] {
+                    unimplemented!("String ldc not supported yet");
+                } else {
+                    panic!("Invalid String constant pool entry at {}", string_index);
+                }
+            }
+            ConstantPoolInfo::Class { name_index } => {
+                if let ConstantPoolInfo::Utf8 { string } = &self.cp[*name_index as usize] {
+                    unimplemented!("Class ldc not supported yet");
+                } else {
+                    panic!("Invalid String constant pool entry at {}", name_index);
+                }
+            }
+            other => panic!("Unsupported ldc constant: {:?}", other)
         }
     }
 }

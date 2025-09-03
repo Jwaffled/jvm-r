@@ -1,7 +1,8 @@
 public class Main {
     public static void main(String[] args) {
-        int a = -7;
-        int b = 6;
-        int c = a + b;
+        Main ref = new Main();
+        Main ref1 = ref;
+        Main ref2 = ref1;
+        int[] arr = new int[5];
     }
 }
