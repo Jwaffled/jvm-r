@@ -162,7 +162,15 @@ impl JVM {
                 Opcode::SAStore => self.sastore(frame)?,
 
                 // Stack
+                Opcode::Pop => self.pop(frame)?,
+                Opcode::Pop2 => self.pop2(frame)?,
                 Opcode::Dup => self.dup(frame)?,
+                Opcode::DupX1 => self.dup_x1(frame)?,
+                Opcode::DupX2 => self.dup_x2(frame)?,
+                Opcode::Dup2 => self.dup2(frame)?,
+                Opcode::Dup2X1 => self.dup2_x1(frame)?,
+                Opcode::Dup2X2 => self.dup2_x2(frame)?,
+                Opcode::Swap => self.swap(frame)?,
 
                 // Math
                 Opcode::IAdd => self.iadd(frame)?,
@@ -329,9 +337,133 @@ impl JVM {
 
     /* Stack */
 
+    fn pop(&mut self, frame: &mut StackFrame) -> JVMResult {
+        frame.operand_stack.pop().unwrap();
+        Ok(())
+    }
+
+    fn pop2(&mut self, frame: &mut StackFrame) -> JVMResult {
+        if frame.operand_stack.last().unwrap().is_category2() {
+            frame.operand_stack.pop().unwrap();
+        } else {
+            frame.operand_stack.pop().unwrap();
+            frame.operand_stack.pop().unwrap();
+        }
+
+        Ok(())
+    }
+
     fn dup(&mut self, frame: &mut StackFrame) -> JVMResult {
         let value = frame.operand_stack.last().unwrap().clone();
         frame.operand_stack.push(value);
+        Ok(())
+    }
+
+    fn dup_x1(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value1 = frame.operand_stack.pop().unwrap();
+        let value2 = frame.operand_stack.pop().unwrap();
+        frame.operand_stack.push(value1.clone());
+        frame.operand_stack.push(value2);
+        frame.operand_stack.push(value1);
+        Ok(())
+    }
+
+    fn dup_x2(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value1 = frame.operand_stack.pop().unwrap();
+        let value2 = frame.operand_stack.pop().unwrap();
+        if value2.is_category2() {
+            frame.operand_stack.push(value1.clone());
+            frame.operand_stack.push(value2);
+            frame.operand_stack.push(value1);
+        } else {
+            let value3 = frame.operand_stack.pop().unwrap();
+            frame.operand_stack.push(value1.clone());
+            frame.operand_stack.push(value3);
+            frame.operand_stack.push(value2);
+            frame.operand_stack.push(value1);
+        }
+
+        Ok(())
+    }
+
+    fn dup2(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value1 = frame.operand_stack.pop().unwrap();
+
+        if value1.is_category2() {
+            frame.operand_stack.push(value1.clone());
+            frame.operand_stack.push(value1);
+        } else {
+            let value2 = frame.operand_stack.pop().unwrap();
+            frame.operand_stack.push(value2.clone());
+            frame.operand_stack.push(value1.clone());
+            frame.operand_stack.push(value2);
+            frame.operand_stack.push(value1);
+        }
+
+        Ok(())
+    }
+
+    fn dup2_x1(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value1 = frame.operand_stack.pop().unwrap();
+        if value1.is_category2() {
+            let value2 = frame.operand_stack.pop().unwrap();
+            frame.operand_stack.push(value1.clone());
+            frame.operand_stack.push(value2);
+            frame.operand_stack.push(value1);
+        } else {
+            let value2 = frame.operand_stack.pop().unwrap();
+            let value3 = frame.operand_stack.pop().unwrap();
+            frame.operand_stack.push(value2.clone());
+            frame.operand_stack.push(value1.clone());
+            frame.operand_stack.push(value3);
+            frame.operand_stack.push(value2);
+            frame.operand_stack.push(value1);
+        }
+
+        Ok(())
+    }
+
+    fn dup2_x2(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value1 = frame.operand_stack.pop().unwrap();
+        let value2 = frame.operand_stack.pop().unwrap();
+        if value1.is_category2() && value2.is_category2() {
+            frame.operand_stack.push(value1.clone());
+            frame.operand_stack.push(value2);
+            frame.operand_stack.push(value1);
+        } else {
+            let value3 = frame.operand_stack.pop().unwrap();
+            if value3.is_category2() {
+                if value2.is_category2() {
+                    frame.operand_stack.push(value1.clone());
+                    frame.operand_stack.push(value3);
+                    frame.operand_stack.push(value2);
+                    frame.operand_stack.push(value1);
+                } else {
+                    frame.operand_stack.push(value2.clone());
+                    frame.operand_stack.push(value1.clone());
+                    frame.operand_stack.push(value3);
+                    frame.operand_stack.push(value2);
+                    frame.operand_stack.push(value1);
+                }
+            } else {
+                let value4 = frame.operand_stack.pop().unwrap();
+                frame.operand_stack.push(value2.clone());
+                frame.operand_stack.push(value1.clone());
+                frame.operand_stack.push(value4);
+                frame.operand_stack.push(value3);
+                frame.operand_stack.push(value2);
+                frame.operand_stack.push(value1);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn swap(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let value1 = frame.operand_stack.pop().unwrap();
+        let value2 = frame.operand_stack.pop().unwrap();
+        frame.operand_stack.push(value1);
+        frame.operand_stack.push(value2);
         Ok(())
     }
 

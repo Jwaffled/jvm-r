@@ -15,3 +15,9 @@ pub enum JValue {
     Reference(Rc<RefCell<JObject>>),
     Null
 }
+
+impl JValue {
+    pub fn is_category2(&self) -> bool {
+        matches!(self, JValue::Long(_) | JValue::Double(_))
+    }
+}
