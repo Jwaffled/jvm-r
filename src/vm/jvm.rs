@@ -303,6 +303,17 @@ impl JVM {
                 Opcode::IfACmpNe(offset) => self.if_acmpne(frame, offset)?,
 
                 // Control
+                Opcode::Goto(offset) => self.goto(frame, offset)?,
+                Opcode::Jsr(_) => unimplemented!("The jsr instruction is not supported by this JVM. Please recompile with Java 6+"),
+                Opcode::Ret(_) => unimplemented!("The ret instruction is not supported by this JVM. Please recompile with Java 6+"),
+                Opcode::TableSwitch { default_offset, low, high, jump_offsets } => self.tableswitch(frame, default_offset, low, high, jump_offsets)?,
+                Opcode::LookupSwitch { default_offset, npairs, match_offsets } => self.lookupswitch(frame, default_offset, npairs, match_offsets)?,
+                Opcode::IReturn => self.ireturn(thread)?,
+                Opcode::LReturn => self.lreturn(thread)?,
+                Opcode::FReturn => self.freturn(thread)?,
+                Opcode::DReturn => self.dreturn(thread)?,
+                Opcode::AReturn => self.areturn(thread)?,
+                Opcode::Return => self.return_op(thread)?,
 
                 // References
                 Opcode::New(index) => self.new_op(frame, index)?,
@@ -346,6 +357,125 @@ impl JVM {
     /* End References */
 
     /* Control */
+
+    fn goto(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+        Ok(())
+    }
+
+    fn tableswitch(&mut self, frame: &mut StackFrame, default_offset: i32, low: i32, high: i32, jump_offsets: Vec<i32>) -> JVMResult {
+        let index = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("tableswitch instruction expected int, received {:?}", other)
+        };
+
+        if index < low || index > high {
+            frame.pc = frame.pc.checked_add_signed(default_offset as isize).unwrap();
+        } else {
+            let value = jump_offsets[(index - low) as usize];
+            frame.pc = frame.pc.checked_add_signed(value as isize).unwrap();
+        }
+
+        Ok(())
+    }
+
+    fn lookupswitch(&mut self, frame: &mut StackFrame, default_offset: i32, npairs: i32, match_offsets: Vec<(i32, i32)>) -> JVMResult {
+        let key = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("lookupswitch instruction expected int, received {:?}", other)
+        };
+
+        for (value, offset) in match_offsets {
+            if key == value {
+                frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                return Ok(());
+            }
+        }
+
+        frame.pc = frame.pc.checked_add_signed(default_offset as isize).unwrap();
+
+        Ok(())
+    }
+
+    fn ireturn(&mut self, thread: &mut JThread) -> JVMResult {
+        let mut frame = thread.stack.pop().unwrap();
+
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => value,
+            other => panic!("ireturn expected int, received {:?}", other)
+        };
+
+        if let Some(caller) = thread.stack.last_mut() {
+            caller.operand_stack.push(JValue::Int(value));
+        }
+
+        Ok(())
+    }
+
+    fn lreturn(&mut self, thread: &mut JThread) -> JVMResult {
+        let mut frame = thread.stack.pop().unwrap();
+
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Long(value) => value,
+            other => panic!("lreturn expected long, received {:?}", other)
+        };
+
+        if let Some(caller) = thread.stack.last_mut() {
+            caller.operand_stack.push(JValue::Long(value));
+        }
+
+        Ok(())
+    }
+
+    fn freturn(&mut self, thread: &mut JThread) -> JVMResult {
+        let mut frame = thread.stack.pop().unwrap();
+
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Float(value) => value,
+            other => panic!("freturn expected float, received {:?}", other)
+        };
+
+        if let Some(caller) = thread.stack.last_mut() {
+            caller.operand_stack.push(JValue::Float(value));
+        }
+
+        Ok(())
+    }
+
+    fn dreturn(&mut self, thread: &mut JThread) -> JVMResult {
+        let mut frame = thread.stack.pop().unwrap();
+
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Double(value) => value,
+            other => panic!("dreturn expected double, received {:?}", other)
+        };
+
+        if let Some(caller) = thread.stack.last_mut() {
+            caller.operand_stack.push(JValue::Double(value));
+        }
+
+        Ok(())
+    }
+
+    fn areturn(&mut self, thread: &mut JThread) -> JVMResult {
+        let mut frame = thread.stack.pop().unwrap();
+
+        let value = match frame.operand_stack.pop().unwrap() {
+            JValue::Reference(value) => value,
+            other => panic!("areturn expected reference, received {:?}", other)
+        };
+
+        if let Some(caller) = thread.stack.last_mut() {
+            caller.operand_stack.push(JValue::Reference(value));
+        }
+
+        Ok(())
+    }
+
+    fn return_op(&mut self, thread: &mut JThread) -> JVMResult {
+        thread.stack.pop().unwrap();
+        Ok(())
+    }
 
     /* End Control */
 
