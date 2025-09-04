@@ -318,6 +318,7 @@ impl JVM {
                 // References
                 Opcode::New(index) => self.new_op(frame, index)?,
                 Opcode::NewArray(ty) => self.newarray(frame, ty)?,
+                Opcode::ANewArray(index) => self.anewarray(frame, index)?,
                 // Extended
 
                 // Reserved
@@ -351,6 +352,19 @@ impl JVM {
 
         let reference = JObject::new_primitive_array(ty, count);
         frame.operand_stack.push(JValue::Reference(Rc::new(RefCell::new(reference))));
+        Ok(())
+    }
+
+    fn anewarray(&mut self, frame: &mut StackFrame, index: u16) -> JVMResult {
+        let count = match frame.operand_stack.pop().unwrap() {
+            JValue::Int(count) => count,
+            other => panic!("newarray expected int, received {:?}", other)
+        };
+
+        let class_name = frame.class.constant_pool.get_class_name(index);
+        let class = Rc::new(Class::reference_array_class(&class_name));
+        let object = JObject::new_reference_array(class, count);
+        frame.operand_stack.push(JValue::Reference(Rc::new(RefCell::new(object))));
         Ok(())
     }
 
@@ -473,6 +487,7 @@ impl JVM {
     }
 
     fn return_op(&mut self, thread: &mut JThread) -> JVMResult {
+        println!("POPPING {:#?}", thread.stack.last());
         thread.stack.pop().unwrap();
         Ok(())
     }
@@ -1640,7 +1655,7 @@ impl JVM {
             JValue::Reference(obj) => {
                 let mut obj = obj.borrow_mut();
                 match &mut obj.kind {
-                    JObjectKind::ArrayRef(array) => array[index as usize] = value,
+                    JObjectKind::ArrayRef(array) => array[index as usize] = Some(value),
                     other => panic!("aastore instruction expected reference array, received {:?}", other)
                 }
             }
@@ -1875,7 +1890,7 @@ impl JVM {
             JValue::Reference(object) => {
                 let object = object.borrow();
                 match &object.kind {
-                    JObjectKind::ArrayRef(array) => frame.operand_stack.push(JValue::Reference(array[index as usize].clone())),
+                    JObjectKind::ArrayRef(array) => frame.operand_stack.push(JValue::Reference(array[index as usize].clone().unwrap())),
                     other => panic!("aaload expected object array, got {:?}", other)
                 }
             }
@@ -2318,7 +2333,7 @@ impl JVM {
                 Opcode::Ret(idx)
             }
             0xAA => {
-                let padding = (4 - (pc % 4)) % 4;
+                let padding = (4 - (pc + 1) % 4) % 4;
                 for _ in 0..padding {
                     reader.read_u8()?;
                     len += 1;
@@ -2329,9 +2344,8 @@ impl JVM {
                 let high = reader.read_i32::<BigEndian>()?;
 
                 len += 12;
-
                 let mut offsets = Vec::with_capacity((high - low + 1) as usize);
-                for _ in low..high {
+                for _ in low..=high {
                     offsets.push(reader.read_i32::<BigEndian>()?);
                     len += 4;
                 }
@@ -2339,7 +2353,7 @@ impl JVM {
                 Opcode::TableSwitch { default_offset: default, low, high, jump_offsets: offsets }
             }
             0xAB => {
-                let padding = (4 - (pc % 4)) % 4;
+                let padding = (4 - (pc + 1) % 4) % 4;
                 for _ in 0..padding {
                     reader.read_u8()?;
                     len += 1;

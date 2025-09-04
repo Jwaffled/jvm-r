@@ -40,6 +40,20 @@ impl JObject {
             fields: HashMap::new()
         }
     }
+
+    pub fn new_reference_array(class: Rc<Class>, count: i32) -> Self {
+        if count < 0 {
+            panic!("new_reference_array expected count > 0, received {}", count);
+        }
+
+        let kind = JObjectKind::ArrayRef(vec![None; count as usize]);
+
+        Self {
+            class,
+            kind,
+            fields: HashMap::new()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -49,7 +63,7 @@ pub enum JObjectKind {
     ArrayLong(Vec<i64>),
     ArrayFloat(Vec<f32>),
     ArrayDouble(Vec<f64>),
-    ArrayRef(Vec<Rc<RefCell<JObject>>>),
+    ArrayRef(Vec<Option<Rc<RefCell<JObject>>>>),
     ArrayChar(Vec<u16>),
     ArrayByte(Vec<i8>),
     ArrayShort(Vec<i16>),

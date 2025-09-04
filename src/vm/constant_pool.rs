@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::{reader::ConstantPoolInfo, vm::{class_loader::ConstantPool, jobject::JObject, jvalue::JValue}};
+use crate::{reader::ConstantPoolInfo, vm::{class::Class, class_loader::{ClassLoader, ConstantPool}, jobject::JObject, jvalue::JValue}};
 
 #[derive(Debug)]
 pub struct VMConstantPool {
@@ -44,6 +44,11 @@ impl VMConstantPool {
             ConstantPoolInfo::Double { bytes } => JValue::Double(*bytes),
             other => panic!("Expected Constant Value, received {:?}", other)
         }
+    }
+
+    pub fn resolve_class(&self, class_index: u16, loader: &mut ClassLoader) -> Rc<Class> {
+        let class_name = self.get_class_name(class_index);
+        loader.load_class(&class_name).unwrap()
     }
 
     pub fn resolve_ldc_constant(&self, index: u16) -> JValue {
