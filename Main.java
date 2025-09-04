@@ -1,9 +1,16 @@
 public class Main {
     public static void main(String[] args) {
-        int i = 6;
-        i++;
-        i = i << 2;
-        i *= 3;
-        System.out.println(i);
+        int i = 0;
+        if (i != 0) {
+
+        } else {
+            i = 0;
+        }
+
+        if (i == 0) {
+            i++;
+        } else {
+            i--;
+        }
     }
 }

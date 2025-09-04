@@ -8,7 +8,7 @@ use crate::{reader::{Attribute, AttributeInfo, ClassFileReader, ConstantPoolInfo
 pub struct Method {
     pub name: String,
     pub descriptor: String,
-    pub code: Vec<Opcode>,
+    pub code: Vec<u8>,
     pub max_locals: u16,
     pub max_stack: u16,
 }

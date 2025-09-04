@@ -1,6 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, error::Error, io::Cursor, rc::Rc};
 
-use crate::vm::{class::Class, class_loader::ClassLoader, jobject::{JObject, JObjectKind}, jthread::JThread, jvalue::JValue, opcode::{AType, Opcode}, stack_frame::StackFrame};
+use byteorder::{BigEndian, ReadBytesExt};
+use num_enum::TryFromPrimitive;
+
+use crate::{reader::ClassFileReader, vm::{class::Class, class_loader::ClassLoader, jobject::{JObject, JObjectKind}, jthread::JThread, jvalue::JValue, opcode::{AType, Opcode, WideInstruction}, stack_frame::StackFrame}};
 
 pub struct JVM {
     class_loader: ClassLoader,
@@ -38,15 +41,53 @@ impl JVM {
 
         let mut thread = JThread { stack: vec![frame] };
 
-        while let Some(frame) = thread.stack.last_mut() {
-            if frame.pc >= frame.method.code.len() {
-                println!("Popping frame: {:#?}", frame);
+        loop {
+            let (should_pop, opcode_info) = {
+                match thread.stack.last() {
+                    None => break,
+                    Some(frame) => {
+                        if frame.pc >= frame.method.code.len() {
+                            (true, None)
+                        } else {
+                            let opcode_info = Self::parse_opcode(&frame.method.code, frame.pc).unwrap();
+                            (false, Some((opcode_info, frame.pc)))
+                        }
+                    }
+                }
+            };
+            
+            if should_pop {
+                println!("Popping frame: {:#?}", thread.stack.last().unwrap());
                 thread.stack.pop();
                 continue;
             }
-            let opcode = frame.method.code[frame.pc].clone();
-            self.execute_opcode(&mut thread, opcode)?;
+            
+            if let Some(((opcode, len), start_pc)) = opcode_info {
+                self.execute_opcode(&mut thread, opcode)?;
+                if let Some(frame) = thread.stack.last_mut() {
+                    if frame.pc == start_pc {
+                        frame.pc += len;
+                    }
+                }
+            }
         }
+
+        // while let Some(frame) = thread.stack.last_mut() {
+        //     if frame.pc >= frame.method.code.len() {
+        //         println!("Popping frame: {:#?}", frame);
+        //         thread.stack.pop();
+        //         continue;
+        //     }
+
+        //     let (opcode, len) = Self::parse_opcode(&frame.method.code, frame.pc).unwrap();
+
+        //     let start_pc = frame.pc;
+        //     self.execute_opcode(&mut thread, opcode)?;
+
+        //     if frame.pc == start_pc {
+        //         frame.pc += len;
+        //     }
+        // }
 
         Ok(())
     }
@@ -246,6 +287,21 @@ impl JVM {
                 Opcode::FCmpG => self.fcmpg(frame)?,
                 Opcode::DCmpL => self.dcmpl(frame)?,
                 Opcode::DCmpG => self.dcmpg(frame)?,
+                Opcode::IfEq(offset) => self.ifeq(frame, offset)?,
+                Opcode::IfNe(offset) => self.ifne(frame, offset)?,
+                Opcode::IfLt(offset) => self.iflt(frame, offset)?,
+                Opcode::IfGe(offset) => self.ifge(frame, offset)?,
+                Opcode::IfGt(offset) => self.ifgt(frame, offset)?,
+                Opcode::IfLe(offset) => self.ifle(frame, offset)?,
+                Opcode::IfICmpEq(offset) => self.if_icmpeq(frame, offset)?,
+                Opcode::IfICmpNe(offset) => self.if_icmpne(frame, offset)?,
+                Opcode::IfICmpLt(offset) => self.if_icmplt(frame, offset)?,
+                Opcode::IfICmpGe(offset) => self.if_icmpgt(frame, offset)?,
+                Opcode::IfICmpGt(offset) => self.if_icmpgt(frame, offset)?,
+                Opcode::IfICmpLe(offset) => self.if_icmple(frame, offset)?,
+                Opcode::IfACmpEq(offset) => self.if_acmpeq(frame, offset)?,
+                Opcode::IfACmpNe(offset) => self.if_acmpne(frame, offset)?,
+
                 // Control
 
                 // References
@@ -256,8 +312,6 @@ impl JVM {
                 // Reserved
                 _ => {}
             }
-
-            frame.pc += 1;
         }
 
         Ok(())
@@ -388,7 +442,7 @@ impl JVM {
         match frame.operand_stack.pop().unwrap() {
             JValue::Int(value) => {
                 if value == 0 {
-                    frame.pc.checked_add_signed(offset as isize).unwrap();
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
                 }
             }
             other => panic!("ifeq expected int, received {:?}", other)
@@ -397,6 +451,190 @@ impl JVM {
         Ok(())
     }
 
+    fn ifne(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => {
+                if value != 0 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            }
+            other => panic!("ifne expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn iflt(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => {
+                if value < 0 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            }
+            other => panic!("iflt expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn ifge(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => {
+                if value >= 0 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            }
+            other => panic!("ifge expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn ifgt(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => {
+                if value > 0 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            }
+            other => panic!("ifgt expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }
+
+    fn ifle(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        match frame.operand_stack.pop().unwrap() {
+            JValue::Int(value) => {
+                if value <= 0 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            }
+            other => panic!("ifle expected int, received {:?}", other)
+        }
+
+        Ok(())
+    }    
+
+    fn if_icmpeq(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => {
+                if value1 == value2 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            },
+            (other1, other2) => panic!("if_icmpeq expected both values to be int, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn if_icmpne(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => {
+                if value1 != value2 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            },
+            (other1, other2) => panic!("if_icmpne expected both values to be int, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn if_icmplt(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => {
+                if value1 < value2 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            },
+            (other1, other2) => panic!("if_icmplt expected both values to be int, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn if_icmpge(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => {
+                if value1 >= value2 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            },
+            (other1, other2) => panic!("if_icmpge expected both values to be int, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn if_icmpgt(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => {
+                if value1 > value2 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            },
+            (other1, other2) => panic!("if_icmpgt expected both values to be int, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn if_icmple(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Int(value1), JValue::Int(value2)) => {
+                if value1 <= value2 {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            },
+            (other1, other2) => panic!("if_icmple expected both values to be int, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }    
+
+    fn if_acmpeq(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Reference(value1), JValue::Reference(value2)) => {
+                if Rc::ptr_eq(&value1, &value2) {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            },
+            (other1, other2) => panic!("if_acmpeq expected both values to be reference, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
+
+    fn if_acmpne(&mut self, frame: &mut StackFrame, offset: i16) -> JVMResult {
+        let value2 = frame.operand_stack.pop().unwrap();
+        let value1 = frame.operand_stack.pop().unwrap();
+        match (value1, value2) {
+            (JValue::Reference(value1), JValue::Reference(value2)) => {
+                if !Rc::ptr_eq(&value1, &value2) {
+                    frame.pc = frame.pc.checked_add_signed(offset as isize).unwrap();
+                }
+            },
+            (other1, other2) => panic!("if_acmpne expected both values to be reference, received {:?} and {:?}", other1, other2)
+        }
+
+        Ok(())
+    }
     /* End Comparisons */
 
     /* Conversions */
@@ -1624,6 +1862,569 @@ impl JVM {
     }
 
     /* End Constants */
+
+    fn parse_opcode(code: &[u8], pc: usize) -> std::io::Result<(Opcode, usize)> {
+        let mut reader = Cursor::new(&code[pc..]);
+        let mut len = 0_usize;
+        let code = reader.read_u8()?;
+        let op = match code {
+            /* Constants */
+            0x00 => Opcode::Nop,
+            0x01 => Opcode::AConstNull,
+            0x02 => Opcode::IConstM1,
+            0x03 => Opcode::IConst0,
+            0x04 => Opcode::IConst1,
+            0x05 => Opcode::IConst2,
+            0x06 => Opcode::IConst3,
+            0x07 => Opcode::IConst4,
+            0x08 => Opcode::IConst5,
+            0x09 => Opcode::LConst0,
+            0x0A => Opcode::LConst1,
+            0x0B => Opcode::FConst0,
+            0x0C => Opcode::FConst1,
+            0x0D => Opcode::FConst2,
+            0x0E => Opcode::DConst0,
+            0x0F => Opcode::DConst1,
+            0x10 => {
+                let idx = reader.read_i8()?;
+                len += 1;
+                Opcode::BIPush(idx)
+            }
+            0x11 => {
+                let idx = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::SIPush(idx)
+            }
+            0x12 => {
+                let idx = reader.read_u8()?; 
+                len += 1;
+                Opcode::Ldc(idx) 
+            }
+            0x13 => {
+                let idx = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::LdcW(idx)
+            }
+            0x14 => {
+                let idx = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::Ldc2W(idx)
+            }
+
+            // Loads
+            0x15 => {
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::ILoad(idx)
+            }
+            0x16 => {
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::LLoad(idx)
+            }
+            0x17 => {
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::FLoad(idx)
+            }
+            0x18 => {
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::DLoad(idx)
+            }
+            0x19 => {
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::ALoad(idx)
+            }
+            0x1A => Opcode::ILoad0,
+            0x1B => Opcode::ILoad1,
+            0x1C => Opcode::ILoad2,
+            0x1D => Opcode::ILoad3,
+            0x1E => Opcode::LLoad0,
+            0x1F => Opcode::LLoad1,
+            0x20 => Opcode::LLoad2,
+            0x21 => Opcode::LLoad3,
+            0x22 => Opcode::FLoad0,
+            0x23 => Opcode::FLoad1,
+            0x24 => Opcode::FLoad2,
+            0x25 => Opcode::FLoad3,
+            0x26 => Opcode::DLoad0,
+            0x27 => Opcode::DLoad1,
+            0x28 => Opcode::DLoad2,
+            0x29 => Opcode::DLoad3,
+            0x2A => Opcode::ALoad0,
+            0x2B => Opcode::ALoad1,
+            0x2C => Opcode::ALoad2,
+            0x2D => Opcode::ALoad3,
+            0x2E => Opcode::IALoad,
+            0x2F => Opcode::LALoad,
+            0x30 => Opcode::FALoad,
+            0x31 => Opcode::DALoad,
+            0x32 => Opcode::AALoad,
+            0x33 => Opcode::BALoad,
+            0x34 => Opcode::CALoad,
+            0x35 => Opcode::SALoad,
+
+            /* Stores */
+            0x36 => { /* ISTORE */ 
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::IStore(idx)
+            }
+            0x37 => { /* LSTORE */ 
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::LStore(idx)
+            }
+            0x38 => { /* FSTORE */
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::FStore(idx)
+            }
+            0x39 => { /* DSTORE */
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::DStore(idx)
+            }
+            0x3A => { /* ASTORE */
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::AStore(idx)
+            }
+
+            0x3B => Opcode::IStore0,
+            0x3C => Opcode::IStore1,
+            0x3D => Opcode::IStore2,
+            0x3E => Opcode::IStore3,
+            0x3F => Opcode::LStore0,
+            0x40 => Opcode::LStore1,
+            0x41 => Opcode::LStore2,
+            0x42 => Opcode::LStore3,
+            0x43 => Opcode::FStore0,
+            0x44 => Opcode::FStore1,
+            0x45 => Opcode::FStore2,
+            0x46 => Opcode::FStore3,
+            0x47 => Opcode::DStore0,
+            0x48 => Opcode::DStore1,
+            0x49 => Opcode::DStore2,
+            0x4A => Opcode::DStore3,
+            0x4B => Opcode::AStore0,
+            0x4C => Opcode::AStore1,
+            0x4D => Opcode::AStore2,
+            0x4E => Opcode::AStore3,
+            0x4F => Opcode::IAStore,
+            0x50 => Opcode::LAStore,
+            0x51 => Opcode::FAStore,
+            0x52 => Opcode::DAStore,
+            0x53 => Opcode::AAStore,
+            0x54 => Opcode::BAStore,
+            0x55 => Opcode::CAStore,
+            0x56 => Opcode::SAStore,
+
+            /* Stack */
+            0x57 => Opcode::Pop,
+            0x58 => Opcode::Pop2,
+            0x59 => Opcode::Dup,
+            0x5A => Opcode::DupX1,
+            0x5B => Opcode::DupX2,
+            0x5C => Opcode::Dup2,
+            0x5D => Opcode::Dup2X1,
+            0x5E => Opcode::Dup2X2,
+            0x5F => Opcode::Swap,
+
+            /* Math */
+            0x60 => Opcode::IAdd,
+            0x61 => Opcode::LAdd,
+            0x62 => Opcode::FAdd,
+            0x63 => Opcode::DAdd,
+            0x64 => Opcode::ISub,
+            0x65 => Opcode::LSub,
+            0x66 => Opcode::FSub,
+            0x67 => Opcode::DSub,
+            0x68 => Opcode::IMul,
+            0x69 => Opcode::LMul,
+            0x6A => Opcode::FMul,
+            0x6B => Opcode::DMul,
+            0x6C => Opcode::IDiv,
+            0x6D => Opcode::LDiv,
+            0x6E => Opcode::FDiv,
+            0x6F => Opcode::DDiv,
+            0x70 => Opcode::IRem,
+            0x71 => Opcode::LRem,
+            0x72 => Opcode::FRem,
+            0x73 => Opcode::DRem,
+            0x74 => Opcode::INeg,
+            0x75 => Opcode::LNeg,
+            0x76 => Opcode::FNeg,
+            0x77 => Opcode::DNeg,
+            0x78 => Opcode::IShl,
+            0x79 => Opcode::LShl,
+            0x7A => Opcode::IShr,
+            0x7B => Opcode::LShr,
+            0x7C => Opcode::IUShr,
+            0x7D => Opcode::LUshr,
+            0x7E => Opcode::IAnd,
+            0x7F => Opcode::LAnd,
+            0x80 => Opcode::IOr,
+            0x81 => Opcode::LOr,
+            0x82 => Opcode::IXor,
+            0x83 => Opcode::LXor,
+            0x84 => {
+                let idx = reader.read_u8()?;
+                let constant = reader.read_i8()?;
+                len += 2;
+                Opcode::IInc(idx, constant)
+            }
+
+            /* Conversions */
+            0x85 => Opcode::I2L,
+            0x86 => Opcode::I2F,
+            0x87 => Opcode::I2D,
+            0x88 => Opcode::L2I,
+            0x89 => Opcode::L2F,
+            0x8A => Opcode::L2D,
+            0x8B => Opcode::F2I,
+            0x8C => Opcode::F2L,
+            0x8D => Opcode::F2D,
+            0x8E => Opcode::D2I,
+            0x8F => Opcode::D2L,
+            0x90 => Opcode::D2F,
+            0x91 => Opcode::I2B,
+            0x92 => Opcode::I2C,
+            0x93 => Opcode::I2S,
+
+            /* Comparisons */
+            0x94 => Opcode::LCmp,
+            0x95 => Opcode::FCmpL,
+            0x96 => Opcode::FCmpG,
+            0x97 => Opcode::DCmpL,
+            0x98 => Opcode::DCmpG,
+            0x99 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfEq(offset)
+            }
+            0x9A => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfNe(offset)
+            }
+            0x9B => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfLt(offset)
+            }
+            0x9C => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfGe(offset)
+            }
+            0x9D => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfGt(offset)
+            }
+            0x9E => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfLe(offset)
+            }
+            0x9F => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfICmpEq(offset)
+            }
+            0xA0 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfICmpNe(offset)
+            }
+            0xA1 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfICmpLt(offset)
+            }
+            0xA2 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfICmpGe(offset)
+            }
+            0xA3 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfICmpGt(offset)
+            }
+            0xA4 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfICmpLe(offset)
+            }
+            0xA5 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfACmpEq(offset)
+            }
+            0xA6 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfACmpNe(offset)
+            }
+
+            /* Control */
+            0xA7 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::Goto(offset)
+            }
+            0xA8 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::Jsr(offset)
+            }
+            0xA9 => {
+                let idx = reader.read_u8()?;
+                len += 1;
+                Opcode::Ret(idx)
+            }
+            0xAA => {
+                let padding = (4 - (pc % 4)) % 4;
+                for _ in 0..padding {
+                    reader.read_u8()?;
+                    len += 1;
+                }
+
+                let default = reader.read_i32::<BigEndian>()?;
+                let low = reader.read_i32::<BigEndian>()?;
+                let high = reader.read_i32::<BigEndian>()?;
+
+                len += 12;
+
+                let mut offsets = Vec::with_capacity((high - low + 1) as usize);
+                for _ in low..high {
+                    offsets.push(reader.read_i32::<BigEndian>()?);
+                    len += 4;
+                }
+
+                Opcode::TableSwitch { default_offset: default, low, high, jump_offsets: offsets }
+            }
+            0xAB => {
+                let padding = (4 - (pc % 4)) % 4;
+                for _ in 0..padding {
+                    reader.read_u8()?;
+                    len += 1;
+                }
+
+                let default = reader.read_i32::<BigEndian>()?;
+                let npairs = reader.read_i32::<BigEndian>()?;
+                len += 8;
+
+                let mut pairs = Vec::with_capacity(npairs as usize);
+                for _ in 0..npairs {
+                    let match_val = reader.read_i32::<BigEndian>()?;
+                    let offset = reader.read_i32::<BigEndian>()?;
+                    pairs.push((match_val, offset));
+                    len += 8;
+                }
+
+                Opcode::LookupSwitch { default_offset: default, npairs: npairs, match_offsets: pairs }
+            }
+            0xAC => Opcode::IReturn,
+            0xAD => Opcode::LReturn,
+            0xAE => Opcode::FReturn,
+            0xAF => Opcode::DReturn,
+            0xB0 => Opcode::AReturn,
+            0xB1 => Opcode::Return,
+            
+            /* References */
+            0xB2 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::GetStatic(index)
+            }
+            0xB3 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::PutStatic(index)
+            }
+            0xB4 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::GetField(index)
+            }
+            0xB5 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::PutField(index)
+            }
+            0xB6 => {
+                let idx = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::InvokeVirtual(idx)
+            }
+            0xB7 => {
+                let idx = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::InvokeSpecial(idx)
+            }
+            0xB8 => {
+                let idx = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::InvokeStatic(idx)
+            }
+            0xB9 => {
+                let idx = reader.read_u16::<BigEndian>()?;
+                let count = reader.read_u8()?;
+                if reader.read_u8()? == 0 {
+                    panic!("Expected 0 after invokeinterface count");
+                }
+                len += 4;
+                Opcode::InvokeInterface(idx, count)
+            }
+            0xBA => {
+                let idx = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::InvokeDynamic(idx)
+            }
+            0xBB => {
+                let index = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::New(index)
+            }
+            0xBC => {
+                let atype = reader.read_u8()?;
+                let atype = AType::try_from_primitive(atype).expect("AType after newarray instruction was invalid.");
+                len += 1;
+                Opcode::NewArray(atype)
+            }
+            0xBD => {
+                let index = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::ANewArray(index)
+            }
+            0xBE => Opcode::ArrayLength,
+            0xBF => Opcode::AThrow,
+            0xC0 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::CheckCast(index)
+            }
+            0xC1 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                len += 2;
+                Opcode::InstanceOf(index)
+            }
+            0xC2 => Opcode::MonitorEnter,
+            0xC3 => Opcode::MonitorExit,
+
+            /* Extended */
+            0xC4 => {
+                let wide_opcode = reader.read_u8()?;
+                len += 1;
+
+                let instr = match wide_opcode {
+                    // Loads
+                    0x15 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::ILoad(index)
+                    }
+                    0x16 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::LLoad(index)
+                    }
+                    0x17 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::FLoad(index)
+                    }
+                    0x18 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::DLoad(index)
+                    }
+                    0x19 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::ALoad(index)
+                    }
+
+                    // Stores
+                    0x36 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::IStore(index)
+                    }
+                    0x37 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::LStore(index)
+                    }
+                    0x38 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::FStore(index)
+                    }
+                    0x39 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::DStore(index)
+                    }
+                    0x3A => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        len += 2;
+                        WideInstruction::AStore(index)
+                    }
+
+                    // Increment
+                    0x84 => {
+                        let index = reader.read_u16::<BigEndian>()?;
+                        let constant = reader.read_i16::<BigEndian>()?;
+                        len += 4;
+                        WideInstruction::IInc(index, constant)
+                    }
+
+                    _ => panic!("Unsupported opcode after WIDE: {}", wide_opcode),
+                };
+
+                Opcode::Wide(instr)
+            }
+            0xC5 => {
+                let index = reader.read_u16::<BigEndian>()?;
+                let dimensions = reader.read_u8()?;
+                len += 3;
+                Opcode::MultiANewArray(index, dimensions)
+            }
+            0xC6 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfNull(offset)
+            }
+            0xC7 => {
+                let offset = reader.read_i16::<BigEndian>()?;
+                len += 2;
+                Opcode::IfNonNull(offset)
+            }
+            0xC8 => {
+                let offset = reader.read_i32::<BigEndian>()?;
+                len += 4;
+                Opcode::GotoW(offset)
+            }
+            0xC9 => {
+                let offset = reader.read_i32::<BigEndian>()?;
+                len += 4;
+                Opcode::JsrW(offset)
+            }
+            0xCA => Opcode::Breakpoint,
+
+            0xCB..=0xFF => panic!("Unknown opcode {:X}", code),
+        };
+
+        len += 1;
+
+        Ok((op, len))
+    }
 }
 
 type JVMResult = Result<(), JVMError>;
