@@ -1,6 +1,6 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
-use crate::{reader::ConstantPoolInfo, vm::{class::Class, class_loader::{ClassLoader, ConstantPool}, jobject::JObject, jvalue::JValue}};
+use crate::{reader::ConstantPoolInfo, vm::{class::Class, class_loader::{ClassLoader, ConstantPool}, jobject::{JObject, JObjectKind}, jvalue::JValue}};
 
 #[derive(Debug)]
 pub struct VMConstantPool {
@@ -51,20 +51,20 @@ impl VMConstantPool {
         loader.load_class(&class_name).unwrap()
     }
 
-    pub fn resolve_ldc_constant(&self, index: u16) -> JValue {
+    pub fn resolve_ldc_constant(&self, index: u16) -> ResolvedConstant {
         match &self.cp[index as usize] {
-            ConstantPoolInfo::Integer { bytes } => JValue::Int(*bytes),
-            ConstantPoolInfo::Float { bytes} => JValue::Float(*bytes),
+            ConstantPoolInfo::Integer { bytes } => ResolvedConstant::Integer(*bytes),
+            ConstantPoolInfo::Float { bytes} => ResolvedConstant::Float(*bytes),
             ConstantPoolInfo::String { string_index } => {
                 if let ConstantPoolInfo::Utf8 { string } = &self.cp[*string_index as usize] {
-                    unimplemented!("String ldc not supported yet");
+                    ResolvedConstant::String(string)
                 } else {
                     panic!("Invalid String constant pool entry at {}", string_index);
                 }
             }
             ConstantPoolInfo::Class { name_index } => {
                 if let ConstantPoolInfo::Utf8 { string } = &self.cp[*name_index as usize] {
-                    unimplemented!("Class ldc not supported yet");
+                    ResolvedConstant::Class(string)
                 } else {
                     panic!("Invalid String constant pool entry at {}", name_index);
                 }
@@ -72,4 +72,11 @@ impl VMConstantPool {
             other => panic!("Unsupported ldc constant: {:?}", other)
         }
     }
+}
+
+pub enum ResolvedConstant<'a> {
+    Integer(i32),
+    Float(f32),
+    String(&'a str),
+    Class(&'a str),
 }

@@ -30,4 +30,13 @@ impl Field {
             constant_value
         }
     }
+
+    pub fn new(name: &str, descriptor: &str, access_flags: FieldAccessFlags) -> Self {
+        Self {
+            name: name.to_string(),
+            descriptor: descriptor.to_string(),
+            access_flags,
+            constant_value: None,
+        }
+    }
 }

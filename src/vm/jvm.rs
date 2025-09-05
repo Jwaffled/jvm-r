@@ -3,11 +3,12 @@ use std::{cell::RefCell, collections::HashMap, error::Error, io::Cursor, rc::Rc}
 use byteorder::{BigEndian, ReadBytesExt};
 use num_enum::TryFromPrimitive;
 
-use crate::{reader::ClassFileReader, vm::{class::Class, class_loader::ClassLoader, jobject::{JObject, JObjectKind}, jthread::JThread, jvalue::JValue, opcode::{AType, Opcode, WideInstruction}, stack_frame::StackFrame}};
+use crate::{reader::ClassFileReader, vm::{class::Class, class_loader::ClassLoader, constant_pool::ResolvedConstant, jobject::{JObject, JObjectKind}, jthread::JThread, jvalue::JValue, opcode::{AType, Opcode, WideInstruction}, stack_frame::StackFrame}};
 
 pub struct JVM {
     class_loader: ClassLoader,
     classes: HashMap<String, Rc<Class>>,
+    interned_strings: HashMap<String, Rc<RefCell<JObject>>>,
     threads: Vec<JThread>
 }
 
@@ -16,6 +17,7 @@ impl JVM {
         Self {
             class_loader: ClassLoader::new(),
             classes: HashMap::new(),
+            interned_strings: HashMap::new(),
             threads: Vec::new(),
         }
     }
@@ -2001,12 +2003,42 @@ impl JVM {
     }
 
     fn ldc(&mut self, frame: &mut StackFrame, index: u16) -> JVMResult {
-        let entry = frame.class.constant_pool.resolve_ldc_constant(index as u16);
+        let entry = match frame.class.constant_pool.resolve_ldc_constant(index as u16) {
+            ResolvedConstant::Integer(value) => JValue::Int(value),
+            ResolvedConstant::Float(value) => JValue::Float(value),
+            ResolvedConstant::String(value) => JValue::Reference(self.make_java_string(value)),
+            ResolvedConstant::Class(value) => unimplemented!("Class ldc not implemented yet")
+        };
         frame.operand_stack.push(entry);
         Ok(())
     }
 
     /* End Constants */
+
+    fn make_java_string(&mut self, s: &str) -> Rc<RefCell<JObject>> {
+        if let Some(ptr) = self.interned_strings.get(s) {
+            return ptr.clone();
+        }
+
+        let string_class = self.class_loader.load_class("java/lang/String").unwrap();
+        let mut str_object = JObject::new(string_class);
+        let chars = s.encode_utf16().collect::<Vec<u16>>();
+        let char_array_class = self.class_loader.load_class("[C").unwrap();
+        let char_array_object = JObject::new_kind(
+            char_array_class,
+            JObjectKind::ArrayChar(chars)
+        );
+
+        str_object.set_field(
+            "value:[C",
+            JValue::Reference(Rc::new(RefCell::new(char_array_object))) 
+        );
+
+        let rc = Rc::new(RefCell::new(str_object));
+        self.interned_strings.insert(s.to_string(), rc.clone());
+
+        rc
+    }
 
     fn parse_opcode(code: &[u8], pc: usize) -> std::io::Result<(Opcode, usize)> {
         let mut reader = Cursor::new(&code[pc..]);

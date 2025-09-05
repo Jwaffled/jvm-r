@@ -12,10 +12,35 @@ pub struct JObject {
 impl JObject {
     pub fn new(class: Rc<Class>) -> Self {
         Self {
-            class,
+            class: class.clone(),
             kind: JObjectKind::Object,
-            fields: HashMap::new()
+            fields: JObject::default_fields(class),
         }
+    }
+
+    pub fn new_kind(class: Rc<Class>, kind: JObjectKind) -> Self {
+        Self {
+            class: class.clone(),
+            kind,
+            fields: JObject::default_fields(class)
+        }
+    }
+
+    fn default_fields(class: Rc<Class>) -> HashMap<String, JValue> {
+        let mut map = HashMap::new();
+        for (field_name, field) in &class.fields {
+            let value = match field.descriptor.as_bytes()[0] as char {
+                'B' | 'S' | 'I' | 'C' | 'Z' => JValue::Int(0),
+                'J' => JValue::Long(0),
+                'F' => JValue::Float(0.0),
+                'D' => JValue::Double(0.0),
+                'L' | '[' => JValue::Null,
+                _ => panic!()
+            };
+            map.insert(field_name.clone(), value);
+        }
+
+        map
     }
 
     pub fn new_primitive_array(ty: AType, count: i32) -> Self {
@@ -53,6 +78,10 @@ impl JObject {
             kind,
             fields: HashMap::new()
         }
+    }
+
+    pub fn set_field(&mut self, name: &str, value: JValue) {
+        self.fields.insert(name.to_string(), value);
     }
 }
 
