@@ -1,14 +1,8 @@
 public class Main {
+    public int value;
     public static void main(String[] args) {
-        String a = "Hello!";
-        String b = "Hello...";
-        String c = "Hello!";
-        int d;
-
-        if (a == b) {
-            d = 1;
-        } else {
-            d = -1;
-        }
+        Main m = new Main();
+        m.value = 5;
+        int x = m.value;
     }
 }

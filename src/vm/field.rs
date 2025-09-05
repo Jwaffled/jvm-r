@@ -1,4 +1,4 @@
-use crate::{reader::{Attribute, ConstantPoolInfo, FieldAccessFlags, FieldInfo}, vm::{class_loader::ConstantPool, constant_pool::VMConstantPool, jvalue::JValue}};
+use crate::{reader::{Attribute, FieldAccessFlags, FieldInfo}, vm::{constant_pool::VMConstantPool, jvalue::JValue}};
 
 #[derive(Debug)]
 pub struct Field {

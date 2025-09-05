@@ -10,20 +10,20 @@ pub struct JObject {
 }
 
 impl JObject {
-    pub fn new(class: Rc<Class>) -> Self {
-        Self {
+    pub fn new(class: Rc<Class>) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
             class: class.clone(),
             kind: JObjectKind::Object,
             fields: JObject::default_fields(class),
-        }
+        }))
     }
 
-    pub fn new_kind(class: Rc<Class>, kind: JObjectKind) -> Self {
-        Self {
+    pub fn new_kind(class: Rc<Class>, kind: JObjectKind) -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
             class: class.clone(),
             kind,
             fields: JObject::default_fields(class)
-        }
+        }))
     }
 
     fn default_fields(class: Rc<Class>) -> HashMap<String, JValue> {
@@ -43,11 +43,11 @@ impl JObject {
         map
     }
 
-    pub fn new_primitive_array(ty: AType, count: i32) -> Self {
+    pub fn new_primitive_array(ty: AType, count: i32) -> Rc<RefCell<Self>> {
         if count < 0 {
             panic!("new_primitive_array expected count > 0, received {}", count);
         }
-        let class = Rc::new(Class::primitive_array_class(ty));
+        let class = Class::primitive_array_class(ty);
         let kind = match ty {
             AType::Boolean => JObjectKind::ArrayBoolean(vec![false; count as usize]),
             AType::Char => JObjectKind::ArrayChar(vec![0; count as usize]),
@@ -59,29 +59,48 @@ impl JObject {
             AType::Long => JObjectKind::ArrayLong(vec![0; count as usize]),
         };
 
-        Self {
+        Rc::new(RefCell::new(Self {
             class,
             kind,
             fields: HashMap::new()
-        }
+        }))
     }
 
-    pub fn new_reference_array(class: Rc<Class>, count: i32) -> Self {
+    pub fn new_reference_array(class: Rc<Class>, count: i32) -> Rc<RefCell<Self>> {
         if count < 0 {
             panic!("new_reference_array expected count > 0, received {}", count);
         }
 
         let kind = JObjectKind::ArrayRef(vec![None; count as usize]);
 
-        Self {
+        Rc::new(RefCell::new(Self {
             class,
             kind,
             fields: HashMap::new()
+        }))
+    }
+
+    pub fn array_length(&self) -> i32 {
+        match &self.kind {
+            JObjectKind::ArrayInt(vec) => vec.len() as i32,
+            JObjectKind::ArrayLong(vec) => vec.len() as i32,
+            JObjectKind::ArrayFloat(vec) => vec.len() as i32,
+            JObjectKind::ArrayDouble(vec) => vec.len() as i32,
+            JObjectKind::ArrayRef(vec) => vec.len() as i32,
+            JObjectKind::ArrayChar(vec) => vec.len() as i32,
+            JObjectKind::ArrayByte(vec) => vec.len() as i32,
+            JObjectKind::ArrayShort(vec) => vec.len() as i32,
+            JObjectKind::ArrayBoolean(vec) => vec.len() as i32,
+            JObjectKind::Object => panic!("Object was not an array")
         }
     }
 
     pub fn set_field(&mut self, name: &str, value: JValue) {
         self.fields.insert(name.to_string(), value);
+    }
+
+    pub fn get_field(&self, name: &str) -> JValue {
+        self.fields.get(name).unwrap().clone()
     }
 }
 

@@ -1,6 +1,6 @@
-use std::{collections::HashMap, error::Error, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc};
 
-use crate::{reader::{ClassAccessFlags, ClassFileReader, ConstantPoolInfo, FieldAccessFlags}, vm::{class::Class, constant_pool::VMConstantPool, field::Field, method::Method, opcode::AType}};
+use crate::{reader::{ClassAccessFlags, ClassFileReader, ConstantPoolInfo, FieldAccessFlags}, vm::{class::Class, constant_pool::VMConstantPool, field::Field, opcode::AType}};
 
 pub type ConstantPool = Vec<ConstantPoolInfo>;
 
@@ -22,7 +22,7 @@ impl ClassLoader {
         // Primitive array classes
         for ty in [AType::Boolean, AType::Byte, AType::Char, AType::Double, AType::Float, AType::Int, AType::Long, AType::Short] {
             let class = Class::primitive_array_class(ty);
-            self.loaded_classes.insert(class.name.clone(), Rc::new(class));
+            self.loaded_classes.insert(class.name.clone(), class);
         }
 
         let object_class = Rc::new(Class {
@@ -38,7 +38,7 @@ impl ClassLoader {
             name: String::from("java/lang/String"),
             super_name: Some(String::from("java/lang/Object")),
             fields: HashMap::from([
-                (String::from("value"), Rc::new(Field::new(
+                (String::from("value:[C"), Rc::new(Field::new(
                     "value:[C",
                     "[C",
                     FieldAccessFlags::Final | FieldAccessFlags::Private
@@ -46,7 +46,7 @@ impl ClassLoader {
             ]),
             methods: HashMap::new(),
             constant_pool: VMConstantPool::empty(),
-            access_flags: ClassAccessFlags::Public
+            access_flags: ClassAccessFlags::Public,
         });
 
         let class_class = Rc::new(Class {
@@ -71,7 +71,7 @@ impl ClassLoader {
         let path = format!("{}.class", name.replace('.', "/"));
 
         let classfile = ClassFileReader::read_file(&path)?;
-        let class = Rc::new(Class::from_classfile(classfile));
+        let class = Class::from_classfile(classfile);
         self.loaded_classes.insert(name.to_string(),  class.clone());
         Ok(class)
     }

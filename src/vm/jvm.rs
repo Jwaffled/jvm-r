@@ -1,9 +1,9 @@
-use std::{cell::RefCell, collections::HashMap, error::Error, io::Cursor, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, io::Cursor, rc::Rc};
 
 use byteorder::{BigEndian, ReadBytesExt};
 use num_enum::TryFromPrimitive;
 
-use crate::{reader::ClassFileReader, vm::{class::Class, class_loader::ClassLoader, constant_pool::ResolvedConstant, jobject::{JObject, JObjectKind}, jthread::JThread, jvalue::JValue, opcode::{AType, Opcode, WideInstruction}, stack_frame::StackFrame}};
+use crate::vm::{class::Class, class_loader::ClassLoader, constant_pool::ResolvedConstant, jobject::{JObject, JObjectKind}, jthread::JThread, jvalue::JValue, opcode::{AType, Opcode, WideInstruction}, stack_frame::StackFrame};
 
 pub struct JVM {
     class_loader: ClassLoader,
@@ -318,9 +318,12 @@ impl JVM {
                 Opcode::Return => self.return_op(thread)?,
 
                 // References
+                Opcode::GetField(index) => self.getfield(frame, index)?,
+                Opcode::PutField(index) => self.putfield(frame, index)?,
                 Opcode::New(index) => self.new_op(frame, index)?,
                 Opcode::NewArray(ty) => self.newarray(frame, ty)?,
                 Opcode::ANewArray(index) => self.anewarray(frame, index)?,
+                Opcode::ArrayLength => self.arraylength(frame)?,
                 // Extended
 
                 // Reserved
@@ -338,35 +341,60 @@ impl JVM {
 
     /* References */
 
+    fn getfield(&mut self, frame: &mut StackFrame, index: u16) -> JVMResult {
+        let reference = frame.pop_ref();
+        let field_ref = frame.class.constant_pool.resolve_constant(index, &mut self.class_loader);
+        let field_name = match field_ref {
+            ResolvedConstant::FieldRef { field } => format!("{}:{}", field.name, field.descriptor),
+            other => panic!("Expected constant entry to be FieldRef, received {:?}", other)
+        };
+
+        let value = reference.borrow().get_field(&field_name);
+        frame.operand_stack.push(value);
+        Ok(())
+    }
+
+    fn putfield(&mut self, frame: &mut StackFrame, index: u16) -> JVMResult {
+        let value = frame.operand_stack.pop().unwrap();
+        let reference = frame.pop_ref();
+        let field_ref = frame.class.constant_pool.resolve_constant(index, &mut self.class_loader);
+        let field_name = match field_ref {
+            ResolvedConstant::FieldRef { field } => format!("{}:{}", field.name, field.descriptor),
+            other => panic!("Expected constant entry to be FieldRef, received {:?}", other)
+        };
+
+        reference.borrow_mut().set_field(&field_name, value);
+        Ok(())
+    }
+
     fn new_op(&mut self, frame: &mut StackFrame, index: u16) -> JVMResult {
         let class_name = frame.class.constant_pool.get_class_name(index);
         let class = self.class_loader.load_class(&class_name).unwrap();
-        let object = Rc::new(RefCell::new(JObject::new(class)));
-        frame.operand_stack.push(JValue::Reference(object));
+        let reference = JObject::new(class);
+        frame.push_ref(reference);
         Ok(())
     }
     
     fn newarray(&mut self, frame: &mut StackFrame, ty: AType) -> JVMResult {
-        let count = match frame.operand_stack.pop().unwrap() {
-            JValue::Int(count) => count,
-            other => panic!("newarray expected int, received {:?}", other)
-        };
-
+        let count = frame.pop_int();
         let reference = JObject::new_primitive_array(ty, count);
-        frame.operand_stack.push(JValue::Reference(Rc::new(RefCell::new(reference))));
+        frame.push_ref(reference);
         Ok(())
     }
 
     fn anewarray(&mut self, frame: &mut StackFrame, index: u16) -> JVMResult {
-        let count = match frame.operand_stack.pop().unwrap() {
-            JValue::Int(count) => count,
-            other => panic!("newarray expected int, received {:?}", other)
-        };
-
+        let count = frame.pop_int();
         let class_name = frame.class.constant_pool.get_class_name(index);
-        let class = Rc::new(Class::reference_array_class(&class_name));
-        let object = JObject::new_reference_array(class, count);
-        frame.operand_stack.push(JValue::Reference(Rc::new(RefCell::new(object))));
+        let class = Class::reference_array_class(&class_name);
+        let reference = JObject::new_reference_array(class, count);
+        frame.push_ref(reference);
+        Ok(())
+    }
+
+    fn arraylength(&mut self, frame: &mut StackFrame) -> JVMResult {
+        let reference = frame.pop_ref();
+        let length = reference.borrow().array_length();
+        frame.push_int(length);
         Ok(())
     }
 
@@ -2003,11 +2031,12 @@ impl JVM {
     }
 
     fn ldc(&mut self, frame: &mut StackFrame, index: u16) -> JVMResult {
-        let entry = match frame.class.constant_pool.resolve_ldc_constant(index as u16) {
+        let entry = match frame.class.constant_pool.resolve_constant(index, &mut self.class_loader) {
             ResolvedConstant::Integer(value) => JValue::Int(value),
             ResolvedConstant::Float(value) => JValue::Float(value),
             ResolvedConstant::String(value) => JValue::Reference(self.make_java_string(value)),
-            ResolvedConstant::Class(value) => unimplemented!("Class ldc not implemented yet")
+            ResolvedConstant::Class(value) => unimplemented!("Class ldc not implemented yet"),
+            other => panic!("Invalid ldc entry received: {:?}", other)
         };
         frame.operand_stack.push(entry);
         Ok(())
@@ -2015,13 +2044,13 @@ impl JVM {
 
     /* End Constants */
 
-    fn make_java_string(&mut self, s: &str) -> Rc<RefCell<JObject>> {
-        if let Some(ptr) = self.interned_strings.get(s) {
+    fn make_java_string(&mut self, s: String) -> Rc<RefCell<JObject>> {
+        if let Some(ptr) = self.interned_strings.get(&s) {
             return ptr.clone();
         }
 
         let string_class = self.class_loader.load_class("java/lang/String").unwrap();
-        let mut str_object = JObject::new(string_class);
+        let str_object = JObject::new(string_class);
         let chars = s.encode_utf16().collect::<Vec<u16>>();
         let char_array_class = self.class_loader.load_class("[C").unwrap();
         let char_array_object = JObject::new_kind(
@@ -2029,15 +2058,14 @@ impl JVM {
             JObjectKind::ArrayChar(chars)
         );
 
-        str_object.set_field(
+        str_object.borrow_mut().set_field(
             "value:[C",
-            JValue::Reference(Rc::new(RefCell::new(char_array_object))) 
+            JValue::Reference(char_array_object) 
         );
 
-        let rc = Rc::new(RefCell::new(str_object));
-        self.interned_strings.insert(s.to_string(), rc.clone());
+        self.interned_strings.insert(s.to_string(), str_object.clone());
 
-        rc
+        str_object
     }
 
     fn parse_opcode(code: &[u8], pc: usize) -> std::io::Result<(Opcode, usize)> {

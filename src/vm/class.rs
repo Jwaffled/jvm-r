@@ -1,6 +1,6 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::{reader::{ClassAccessFlags, ClassFile, ConstantPoolInfo}, vm::{constant_pool::VMConstantPool, field::Field, method::Method, opcode::AType}};
+use crate::{reader::{ClassAccessFlags, ClassFile}, vm::{class_loader::ClassLoader, constant_pool::VMConstantPool, field::Field, jobject::JObject, method::Method, opcode::AType}};
 
 #[derive(Debug)]
 pub struct Class {
@@ -9,11 +9,11 @@ pub struct Class {
     pub methods: HashMap<String, Rc<Method>>,
     pub fields: HashMap<String, Rc<Field>>,
     pub constant_pool: VMConstantPool,
-    pub access_flags: ClassAccessFlags
+    pub access_flags: ClassAccessFlags,
 }
 
 impl Class {
-    pub fn from_classfile(cf: ClassFile) -> Self {
+    pub fn from_classfile(cf: ClassFile) -> Rc<Self> {
         let cp = VMConstantPool::new(cf.constant_pool);
 
         let name = cp.get_class_name(cf.this_class);
@@ -37,20 +37,20 @@ impl Class {
             .fields
             .iter()
             .map(|x| Field::from_field_info(x, &cp))
-            .map(|x| (x.name.clone(), Rc::new(x)))
+            .map(|x| (format!("{}:{}", x.name, x.descriptor), Rc::new(x)))
             .collect::<HashMap<_, _>>();
 
-        Self {
+        Rc::new(Self {
             name,
             super_name,
             methods,
             fields,
             constant_pool: cp,
-            access_flags: cf.access_flags
-        }            
+            access_flags: cf.access_flags,
+        })     
     }
 
-    pub fn primitive_array_class(ty: AType) -> Self {
+    pub fn primitive_array_class(ty: AType) -> Rc<Self> {
         let ty = match ty {
             AType::Byte => "B",
             AType::Char => "C",
@@ -62,24 +62,24 @@ impl Class {
             AType::Boolean => "Z",
         };
 
-        Self {
+        Rc::new(Self {
             name: format!("[{}", ty),
             super_name: Some(String::from("java/lang/Object")),
             methods: HashMap::new(),
             fields: HashMap::new(),
             constant_pool: VMConstantPool::empty(),
             access_flags: ClassAccessFlags::Public,
-        }
+        })
     }
 
-    pub fn reference_array_class(class_name: &str) -> Self {
-        Self {
+    pub fn reference_array_class(class_name: &str) -> Rc<Self> {
+        Rc::new(Self {
             name: format!("[L{};", class_name),
             super_name: Some(String::from("java/lang/Object")),
             methods: HashMap::new(),
             fields: HashMap::new(),
             constant_pool: VMConstantPool::empty(),
             access_flags: ClassAccessFlags::Public,
-        }
+        })
     }
 }

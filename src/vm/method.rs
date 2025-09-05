@@ -1,8 +1,4 @@
-use std::io::Cursor;
-
-use num_enum::TryFromPrimitive;
-
-use crate::{reader::{Attribute, AttributeInfo, ClassFileReader, ConstantPoolInfo, MethodInfo}, vm::{class_loader::ConstantPool, constant_pool::VMConstantPool, opcode::Opcode}};
+use crate::{reader::{Attribute, MethodInfo}, vm::constant_pool::VMConstantPool};
 
 #[derive(Debug)]
 pub struct Method {
