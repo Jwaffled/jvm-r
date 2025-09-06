@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, error::Error, rc::Rc};
 
-use crate::{reader::{ClassAccessFlags, ClassFileReader, ConstantPoolInfo, FieldAccessFlags}, vm::{class::Class, constant_pool::VMConstantPool, field::Field, opcode::AType}};
+use crate::{reader::{ClassAccessFlags, ClassFileReader, ConstantPoolInfo, FieldAccessFlags}, vm::{class::Class, constant_pool::VMConstantPool, field::Field, method::Method, opcode::AType}};
 
 pub type ConstantPool = Vec<ConstantPoolInfo>;
 
@@ -29,7 +29,11 @@ impl ClassLoader {
             name: String::from("java/lang/Object"),
             super_name: None,
             fields: HashMap::new(),
-            methods: HashMap::new(),
+            methods: HashMap::from([
+                (String::from("<init>:()V"), Rc::new(Method::empty(
+                    "<init>", "()V"
+                )))
+            ]),
             constant_pool: VMConstantPool::empty(),
             access_flags: ClassAccessFlags::Public,
         });

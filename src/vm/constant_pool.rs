@@ -1,6 +1,6 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
 
-use crate::{reader::ConstantPoolInfo, vm::{class::Class, class_loader::{ClassLoader, ConstantPool}, field::Field, jobject::{JObject, JObjectKind}, jvalue::JValue}};
+use crate::{reader::ConstantPoolInfo, vm::{class::Class, class_loader::{ClassLoader, ConstantPool}, field::Field, jobject::{JObject, JObjectKind}, jvalue::JValue, method::Method}};
 
 #[derive(Debug)]
 pub struct VMConstantPool {
@@ -85,6 +85,15 @@ impl VMConstantPool {
 
                 let field = class.fields.get(&format!("{}:{}", name, descriptor)).unwrap().clone();
                 ResolvedConstant::FieldRef {  field }
+            },
+            ConstantPoolInfo::MethodRef { class_index, name_and_type_index } => {
+                let class_name = self.get_class_name(*class_index);
+                let class = loader.load_class(&class_name).unwrap();
+                let (name, descriptor) = self.get_name_and_type(*name_and_type_index);
+                println!("Class name {}, name {}, desc {}", class_name, name, descriptor);
+                let method = class.methods.get(&format!("{}:{}", name, descriptor)).unwrap().clone();
+                println!("Resolved method {:?}", method);
+                ResolvedConstant::MethodRef { method, class }
             }
             _ => unimplemented!()
         };
@@ -96,7 +105,7 @@ impl VMConstantPool {
 }
 
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum ResolvedConstant {
     Integer(i32),
     Float(f32),
@@ -105,5 +114,22 @@ pub enum ResolvedConstant {
     FieldRef {
         // class: Rc<Class>,
         field: Rc<Field>
+    },
+    MethodRef {
+        method: Rc<Method>,
+        class: Rc<Class>
+    }
+}
+
+impl Debug for ResolvedConstant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Integer(arg0) => f.debug_tuple("Integer").field(arg0).finish(),
+            Self::Float(arg0) => f.debug_tuple("Float").field(arg0).finish(),
+            Self::String(arg0) => f.debug_tuple("String").field(arg0).finish(),
+            Self::Class(arg0) => f.debug_tuple("Class").field(arg0).finish(),
+            Self::FieldRef { field } => f.debug_struct("FieldRef").field("field", field).finish(),
+            Self::MethodRef { method, class } => f.debug_struct("MethodRef").field("method", method).field("class", &class.name).finish(),
+        }
     }
 }

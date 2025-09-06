@@ -21,3 +21,17 @@ impl JValue {
         matches!(self, JValue::Long(_) | JValue::Double(_))
     }
 }
+
+pub enum DescriptorType {
+    Byte,
+    Char,
+    Double,
+    Float,
+    Int,
+    Long,
+    Short,
+    Boolean,
+    Object(String),
+    Array(Box<DescriptorType>),
+    Void,
+}

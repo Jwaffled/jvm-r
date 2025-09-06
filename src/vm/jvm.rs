@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, io::Cursor, rc::Rc};
 use byteorder::{BigEndian, ReadBytesExt};
 use num_enum::TryFromPrimitive;
 
-use crate::vm::{class::Class, class_loader::ClassLoader, constant_pool::ResolvedConstant, jobject::{JObject, JObjectKind}, jthread::JThread, jvalue::JValue, opcode::{AType, Opcode, WideInstruction}, stack_frame::StackFrame};
+use crate::vm::{class::Class, class_loader::ClassLoader, constant_pool::ResolvedConstant, jobject::{JObject, JObjectKind}, jthread::JThread, jvalue::JValue, method::Method, opcode::{AType, Opcode, WideInstruction}, stack_frame::StackFrame};
 
 pub struct JVM {
     class_loader: ClassLoader,
@@ -33,13 +33,7 @@ impl JVM {
             .ok_or("Main method not found").unwrap()
             .clone();
 
-        let frame = StackFrame {
-            class: class.clone(),
-            operand_stack: Vec::with_capacity(main_method.max_stack as usize),
-            locals: vec![JValue::Null; main_method.max_locals as usize],
-            method: main_method,
-            pc: 0
-        };
+        let frame = StackFrame::new(class.clone(), main_method);
 
         let mut thread = JThread { stack: vec![frame] };
 
@@ -73,23 +67,6 @@ impl JVM {
                 }
             }
         }
-
-        // while let Some(frame) = thread.stack.last_mut() {
-        //     if frame.pc >= frame.method.code.len() {
-        //         println!("Popping frame: {:#?}", frame);
-        //         thread.stack.pop();
-        //         continue;
-        //     }
-
-        //     let (opcode, len) = Self::parse_opcode(&frame.method.code, frame.pc).unwrap();
-
-        //     let start_pc = frame.pc;
-        //     self.execute_opcode(&mut thread, opcode)?;
-
-        //     if frame.pc == start_pc {
-        //         frame.pc += len;
-        //     }
-        // }
 
         Ok(())
     }
@@ -320,6 +297,7 @@ impl JVM {
                 // References
                 Opcode::GetField(index) => self.getfield(frame, index)?,
                 Opcode::PutField(index) => self.putfield(frame, index)?,
+                Opcode::InvokeSpecial(index) => self.invokespecial(thread, index)?,
                 Opcode::New(index) => self.new_op(frame, index)?,
                 Opcode::NewArray(ty) => self.newarray(frame, ty)?,
                 Opcode::ANewArray(index) => self.anewarray(frame, index)?,
@@ -364,6 +342,38 @@ impl JVM {
         };
 
         reference.borrow_mut().set_field(&field_name, value);
+        Ok(())
+    }
+
+    fn invokevirtual(&mut self, frame: &mut StackFrame, index: u16) -> JVMResult {
+        Ok(())
+    }
+
+    fn invokespecial(&mut self, thread: &mut JThread, index: u16) -> JVMResult {
+        let frame = thread.stack.last_mut().unwrap();
+        let method_ref = frame.class.constant_pool.resolve_constant(index, &mut self.class_loader);
+        match method_ref {
+            ResolvedConstant::MethodRef { method, class } => {
+                let (args, ret_ty) = Method::parse_method_descriptor(&method.descriptor);
+                let mut arg_values = Vec::with_capacity(args.len());
+                for _ in 0..args.len() {
+                    arg_values.push(frame.operand_stack.pop().unwrap());
+                }
+                arg_values.reverse();
+                let object = frame.pop_ref();
+
+                let mut new_frame = StackFrame::new(class, method);
+                new_frame.locals[0] = JValue::Reference(object);
+                for (i, arg) in arg_values.into_iter().enumerate() {
+                    new_frame.locals[i + 1] = arg;
+                }
+
+                frame.pc += 3;
+                thread.stack.push(new_frame);
+            }
+            other => panic!("Expected constant entry to be MethodRef, received {:?}", other)
+        }
+
         Ok(())
     }
 

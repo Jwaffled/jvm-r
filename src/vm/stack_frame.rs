@@ -12,6 +12,16 @@ pub struct StackFrame {
 }
 
 impl StackFrame {
+    pub fn new(class: Rc<Class>, method: Rc<Method>) -> Self {
+        Self {
+            locals: vec![JValue::Null; method.max_locals as usize],
+            operand_stack: Vec::with_capacity(method.max_stack as usize),
+            class,
+            method,
+            pc: 0
+        }
+    }
+
     pub fn pop_int(&mut self) -> i32 {
         match self.operand_stack.pop().unwrap() {
             JValue::Int(value) => value,
